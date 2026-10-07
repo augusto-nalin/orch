@@ -83,6 +83,9 @@ func keyClaim(k string) state.Claim {
 	return state.Claim{Kind: "file", Item: k}
 }
 
+// Holds reports whether issue's claims cover c.
+func Holds(s *state.State, issue string, c state.Claim) bool { return holds(s, issue, c) }
+
 func holds(s *state.State, issue string, c state.Claim) bool {
 	return slices.ContainsFunc(s.Claims, func(h state.Claim) bool {
 		return h.Issue == issue && h.Kind == c.Kind && covers(h.Item, c.Item)
@@ -548,4 +551,40 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	slices.Sort(ks)
 	return ks
+}
+
+// ---- commits (hooks) ----
+
+// SetHead records issue's HEAD right before a git commit runs.
+func (b *Broker) SetHead(issue, sha string) error {
+	return b.St.Update(func(s *state.State, log logf) error {
+		s.Heads[issue] = sha
+		return nil
+	})
+}
+
+// Committed runs after a git commit by issue: if HEAD moved from the recorded
+// one, it uses one commit token, releases issue's claims and logs the sha.
+// Returns the sha if a commit was recorded.
+func (b *Broker) Committed(issue, head string) (string, error) {
+	var out string
+	err := b.St.Update(func(s *state.State, log logf) error {
+		before, ok := s.Heads[issue]
+		if !ok {
+			return nil
+		}
+		delete(s.Heads, issue)
+		if head == "" || head == before {
+			return nil
+		}
+		if s.Tokens[issue]--; s.Tokens[issue] <= 0 {
+			delete(s.Tokens, issue)
+		}
+		sha := head[:min(7, len(head))]
+		log("%s commit %s", issue, sha)
+		release(s, b.St.Today(), issue, nil, log)
+		out = sha
+		return nil
+	})
+	return out, err
 }

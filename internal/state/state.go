@@ -61,6 +61,7 @@ type State struct {
 	Questions []Question          `json:"questions"`
 	NextQ     int                 `json:"next_q"`
 	Sessions  map[string]Session  `json:"sessions,omitempty"` // session_id → role
+	Heads     map[string]string   `json:"heads,omitempty"`    // issue → HEAD before its pending git commit
 }
 
 func New() *State {
@@ -85,6 +86,9 @@ func (s *State) init() {
 	}
 	if s.Sessions == nil {
 		s.Sessions = map[string]Session{}
+	}
+	if s.Heads == nil {
+		s.Heads = map[string]string{}
 	}
 	if s.NextQ < 1 {
 		s.NextQ = 1

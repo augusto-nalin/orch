@@ -1,0 +1,425 @@
+// Package hook implements `orch hook <event>`: Claude Code hook handlers that
+// keep the session registry and enforce the worker and orch rules on every tool
+// call. They read the hook JSON on stdin and write a decision JSON (or nothing).
+//
+// Handlers fail open: any internal error is appended to the project's
+// hook-errors.log and the tool call goes ahead, so a broker bug never blocks work.
+package hook
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"time"
+
+	"orch/internal/broker"
+	"orch/internal/project"
+	"orch/internal/state"
+)
+
+type Input struct {
+	SessionID string         `json:"session_id"`
+	Cwd       string         `json:"cwd"`
+	Event     string         `json:"hook_event_name"`
+	Prompt    string         `json:"prompt"`
+	ToolName  string         `json:"tool_name"`
+	ToolInput map[string]any `json:"tool_input"`
+}
+
+// Agent is one row of `claude agents --json`.
+type Agent struct {
+	SessionID string `json:"sessionId"`
+	Name      string `json:"name"`
+}
+
+// Env holds the side effects, swapped out in tests.
+type Env struct {
+	Notify func(title, msg string)
+	Head   func(dir string) string // git HEAD sha of the repo at dir, "" if none
+	Agents func() ([]Agent, error)
+	Now    func() time.Time
+}
+
+func DefaultEnv() Env {
+	return Env{
+		Notify: func(title, msg string) {
+			script := fmt.Sprintf("display notification %q with title %q", msg, title)
+			if c := exec.Command("osascript", "-e", script); c.Start() == nil {
+				c.Process.Release()
+			}
+		},
+		Head: func(dir string) string {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			out, err := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "HEAD").Output()
+			if err != nil {
+				return ""
+			}
+			return strings.TrimSpace(string(out))
+		},
+		Agents: func() ([]Agent, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			out, err := exec.CommandContext(ctx, "claude", "agents", "--json").Output()
+			if err != nil {
+				return nil, err
+			}
+			var a []Agent
+			return a, json.Unmarshal(out, &a)
+		},
+		Now: time.Now,
+	}
+}
+
+type handler struct {
+	env  Env
+	in   Input
+	p    project.Project
+	st   *state.Store
+	b    *broker.Broker
+	sess state.Session
+}
+
+// Run handles one hook event. It always returns exit code 0.
+func Run(event string, stdin io.Reader, stdout io.Writer, env Env) int {
+	h := &handler{env: env}
+	defer func() {
+		if r := recover(); r != nil {
+			h.fail(event, fmt.Errorf("panic: %v", r))
+		}
+	}()
+	if err := json.NewDecoder(stdin).Decode(&h.in); err != nil {
+		h.fail(event, fmt.Errorf("decode input: %w", err))
+		return 0
+	}
+	cwd := h.in.Cwd
+	if cwd == "" {
+		cwd, _ = os.Getwd()
+	}
+	h.p = project.Resolve(cwd)
+	h.st = state.Open(h.p.StateDir, h.p.Name)
+	if env.Now != nil {
+		h.st.Now = env.Now
+	}
+	h.b = broker.New(h.st)
+
+	var out any
+	var err error
+	switch event {
+	case "user-prompt":
+		err = h.userPrompt()
+	case "pre-tool":
+		out, err = h.preTool()
+	case "post-tool":
+		out, err = h.postTool()
+	default:
+		err = fmt.Errorf("unknown event %q", event)
+	}
+	if err != nil {
+		h.fail(event, err)
+		return 0
+	}
+	if out != nil {
+		enc := json.NewEncoder(stdout)
+		enc.SetEscapeHTML(false)
+		enc.Encode(out)
+	}
+	return 0
+}
+
+func (h *handler) fail(event string, err error) {
+	dir := h.p.StateDir
+	if dir == "" {
+		dir = project.Home()
+	}
+	os.MkdirAll(dir, 0o755)
+	f, ferr := os.OpenFile(filepath.Join(dir, "hook-errors.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if ferr != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "%s %s %s: %v\n", time.Now().Format(time.RFC3339), event, h.in.SessionID, err)
+}
+
+// ---- registry ----
+
+var (
+	orchRe   = regexp.MustCompile(`^\s*/(?:orch:)?orch(?:\s|$)`)
+	workerRe = regexp.MustCompile(`^\s*/(?:orch:)?worker\s+([A-Za-z0-9_.-]+)`)
+)
+
+func (h *handler) userPrompt() error {
+	if h.in.SessionID == "" {
+		return nil
+	}
+	if orchRe.MatchString(h.in.Prompt) {
+		return h.b.Register(h.in.SessionID, state.Session{Role: "orch", Name: h.p.Name + "-orch"})
+	}
+	if m := workerRe.FindStringSubmatch(h.in.Prompt); m != nil {
+		issue := strings.TrimRight(m[1], ".")
+		return h.b.Register(h.in.SessionID, state.Session{Role: "worker", Issue: issue, Name: h.p.Name + "-" + issue})
+	}
+	return nil
+}
+
+// role finds this session's role; unknown sessions are looked up by name in
+// `claude agents --json` (resumed sessions, or ones started before the plugin) and
+// the answer is cached, "none" included. Projects without state.json are skipped.
+func (h *handler) role() (bool, error) {
+	if !h.st.Exists() || h.in.SessionID == "" {
+		return false, nil
+	}
+	sess, ok, err := h.b.Lookup(h.in.SessionID)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		sess = state.Session{Role: "none"}
+		if h.env.Agents != nil {
+			agents, err := h.env.Agents()
+			if err != nil {
+				return false, fmt.Errorf("claude agents: %w", err)
+			}
+			for _, a := range agents {
+				if a.SessionID != h.in.SessionID {
+					continue
+				}
+				sess.Name = a.Name
+				if a.Name == h.p.Name+"-orch" {
+					sess.Role = "orch"
+				} else if issue, ok := strings.CutPrefix(a.Name, h.p.Name+"-"); ok && issue != "" {
+					sess.Role, sess.Issue = "worker", issue
+				}
+			}
+		}
+		if err := h.b.Register(h.in.SessionID, sess); err != nil {
+			return false, err
+		}
+	}
+	h.sess = sess
+	return sess.Role == "orch" || sess.Role == "worker", nil
+}
+
+// ---- decisions ----
+
+type preOut struct {
+	HookSpecificOutput struct {
+		HookEventName            string `json:"hookEventName"`
+		PermissionDecision       string `json:"permissionDecision"`
+		PermissionDecisionReason string `json:"permissionDecisionReason"`
+	} `json:"hookSpecificOutput"`
+}
+
+func deny(reason string) *preOut {
+	o := &preOut{}
+	o.HookSpecificOutput.HookEventName = "PreToolUse"
+	o.HookSpecificOutput.PermissionDecision = "deny"
+	o.HookSpecificOutput.PermissionDecisionReason = reason
+	return o
+}
+
+type postOut struct {
+	HookSpecificOutput struct {
+		HookEventName     string `json:"hookEventName"`
+		AdditionalContext string `json:"additionalContext"`
+	} `json:"hookSpecificOutput"`
+}
+
+func (h *handler) str(k string) string {
+	s, _ := h.in.ToolInput[k].(string)
+	return s
+}
+
+func (h *handler) preTool() (any, error) {
+	ok, err := h.role()
+	if err != nil || !ok {
+		return nil, err
+	}
+	if h.sess.Role == "orch" {
+		return h.orchPre()
+	}
+	switch h.in.ToolName {
+	case "Edit", "Write", "MultiEdit", "NotebookEdit":
+		path := h.str("file_path")
+		if path == "" {
+			path = h.str("notebook_path")
+		}
+		return h.checkEdit(path, "")
+	case "Bash":
+		return h.workerBash()
+	}
+	return nil, nil
+}
+
+var imageExt = map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".bmp": true, ".heic": true, ".tiff": true}
+
+// orchPre: the orch reads only its state dir; repo files and images go to workers.
+func (h *handler) orchPre() (any, error) {
+	if h.in.ToolName != "Read" {
+		return nil, nil
+	}
+	path := h.str("file_path")
+	if path == "" {
+		return nil, nil
+	}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(h.in.Cwd, path)
+	}
+	if inside(path, h.p.StateDir) {
+		return nil, nil
+	}
+	if imageExt[strings.ToLower(filepath.Ext(path))] {
+		return deny("orch: no images in the orch context — send a pointer to the worker instead"), nil
+	}
+	if _, in := h.p.Rel(path); in {
+		return deny("orch: no repo reads in the orch context — send a pointer to the worker instead"), nil
+	}
+	return nil, nil
+}
+
+func inside(path, dir string) bool {
+	r, err := filepath.Rel(dir, path)
+	return err == nil && r != ".." && !strings.HasPrefix(r, "../")
+}
+
+// checkEdit denies an edit of a project file this worker doesn't hold, or any
+// project edit while paused. how names the Bash form for the reason.
+func (h *handler) checkEdit(path, how string) (any, error) {
+	if path == "" {
+		return nil, nil
+	}
+	rel, in := h.p.Rel(path)
+	if !in {
+		return nil, nil
+	}
+	issue := h.sess.Issue
+	var paused, held bool
+	err := h.st.View(func(s *state.State) error {
+		paused = s.Paused[issue]
+		held = broker.Holds(s, issue, state.Claim{Kind: "file", Item: rel})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if paused {
+		return deny(fmt.Sprintf("%s is paused by the orch: no edits until resumed", issue)), nil
+	}
+	if !held {
+		return deny(fmt.Sprintf("claim first%s: orch claim %s %s", how, issue, rel)), nil
+	}
+	return nil, nil
+}
+
+func (h *handler) workerBash() (any, error) {
+	issue := h.sess.Issue
+	dir := h.in.Cwd
+	for _, seg := range splitShell(h.str("command")) {
+		if len(seg.args) >= 1 && seg.args[0] == "cd" {
+			if len(seg.args) > 1 {
+				dir = h.abs(dir, seg.args[1])
+			}
+			continue
+		}
+		for _, t := range editTargets(seg) {
+			if out, err := h.checkEdit(h.abs(dir, t), " (Bash edits count too)"); out != nil || err != nil {
+				return out, err
+			}
+		}
+		g, ok := parseGit(seg)
+		if !ok {
+			continue
+		}
+		gdir := dir
+		if g.dir != "" {
+			gdir = h.abs(dir, g.dir)
+		}
+		if project.Resolve(gdir).Root != h.p.Root {
+			continue // another repo
+		}
+		switch {
+		case g.stagesAll():
+			return deny("stage only your files, by path: git add <file>…"), nil
+		case g.commitsAll():
+			return deny("commit only your files, by path: git commit -- <file>…"), nil
+		case g.sub == "commit":
+			var tokens int
+			var paused bool
+			if err := h.st.View(func(s *state.State) error {
+				tokens, paused = s.Tokens[issue], s.Paused[issue]
+				return nil
+			}); err != nil {
+				return nil, err
+			}
+			if paused {
+				return deny(fmt.Sprintf("%s is paused by the orch: no commits until resumed", issue)), nil
+			}
+			if tokens <= 0 {
+				return deny(fmt.Sprintf("wait for the orch: orch wait %s commit (run in background)", issue)), nil
+			}
+			if err := h.b.SetHead(issue, h.env.Head(gdir)); err != nil {
+				return nil, err
+			}
+			if h.env.Notify != nil {
+				h.env.Notify("orch", h.sess.Name+" waits for commit approval")
+			}
+		}
+	}
+	return nil, nil
+}
+
+func (h *handler) abs(dir, p string) string {
+	if strings.HasPrefix(p, "~/") {
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, p[2:])
+	}
+	if filepath.IsAbs(p) {
+		return filepath.Clean(p)
+	}
+	return filepath.Join(dir, p)
+}
+
+// postTool: after a worker's git commit lands, use the token, release its claims
+// and log the sha (this replaces the worker's REPORT).
+func (h *handler) postTool() (any, error) {
+	if h.in.ToolName != "Bash" {
+		return nil, nil
+	}
+	ok, err := h.role()
+	if err != nil || !ok || h.sess.Role != "worker" {
+		return nil, err
+	}
+	dir := h.in.Cwd
+	for _, seg := range splitShell(h.str("command")) {
+		if len(seg.args) > 1 && seg.args[0] == "cd" {
+			dir = h.abs(dir, seg.args[1])
+			continue
+		}
+		g, ok := parseGit(seg)
+		if !ok || g.sub != "commit" {
+			continue
+		}
+		gdir := dir
+		if g.dir != "" {
+			gdir = h.abs(dir, g.dir)
+		}
+		if project.Resolve(gdir).Root != h.p.Root {
+			continue
+		}
+		sha, err := h.b.Committed(h.sess.Issue, h.env.Head(gdir))
+		if err != nil || sha == "" {
+			return nil, err
+		}
+		o := &postOut{}
+		o.HookSpecificOutput.HookEventName = "PostToolUse"
+		o.HookSpecificOutput.AdditionalContext = fmt.Sprintf("orch: commit %s logged, claims released", sha)
+		return o, nil
+	}
+	return nil, nil
+}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"orch/internal/broker"
+	"orch/internal/hook"
 	"orch/internal/project"
 	"orch/internal/state"
 )
@@ -32,6 +33,8 @@ orch:
   commit-go <issue> [n]
   pause <issue> | resume <issue>
   log <text>
+hooks:
+  hook user-prompt|pre-tool|post-tool   hook JSON on stdin
 setup:
   dir | name                   state dir / project name
   import [--force]             board.md + questions.md → state.json
@@ -161,6 +164,11 @@ func run(args []string, stdout io.Writer) (string, int) {
 			return res("", err)
 		}
 		return fmt.Sprintf("imported %d rows, %d claims, %d questions", len(s.Rows), len(s.Claims), len(s.Questions)), 0
+	case "hook":
+		if !need(1) {
+			return "", 2
+		}
+		return "", hook.Run(args[0], os.Stdin, stdout, hook.DefaultEnv())
 	case "help", "-h", "--help":
 		fmt.Fprint(stdout, usage)
 		return "", 0
