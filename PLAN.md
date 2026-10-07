@@ -40,6 +40,11 @@ Decisions made with the user:
 - `orch` is the user's start command: the iTerm2 orchestrator screen with the plugin
   loaded (`plugin/scripts/orch-screen.sh`). No tmux.
 - `orchctl` is the broker CLI that skills, hooks and workers call.
+- `orch setup` (`plugin/scripts/orch-setup.sh`, also `make install`) sets orch up and is
+  safe to re-run: builds `orchctl`, links `orch` + `orchctl` into `~/.local/bin`, checks
+  PATH, a shadowing `orch` alias, iTerm2, jq and claude, moves a legacy `~/.claude/orch`
+  to the state home, and imports the current project's old markdown state. Plain `orch`
+  runs it by itself when `orchctl` is missing.
 
 ## Architecture
 
@@ -55,11 +60,11 @@ plugin/.claude-plugin/plugin.json
 plugin/hooks/hooks.json     → "${CLAUDE_PLUGIN_ROOT}/bin/orch" hook <event>
 plugin/skills/orch/SKILL.md      slimmed (see Skills)
 plugin/skills/worker/SKILL.md    slimmed
-plugin/scripts/             orch-screen.sh (`orch` start command), orch-iterm.sh, orch-pane.sh, orch-close.sh (moved from ~/.claude/skills/orch; iTerm2 only)
+plugin/scripts/             orch-screen.sh (`orch` start command), orch-setup.sh (`orch setup`), orch-iterm.sh, orch-pane.sh, orch-close.sh (moved from ~/.claude/skills/orch; iTerm2 only)
 plugin/orch-settings.json   moved from ~/.claude/skills/orch (caveman off, you-should-know on, state dir writable)
 plugin/worker-settings.json passed to workers: state dir writable in the sandbox, orchctl allowed
 plugin/bin/orchctl          build output (gitignored)
-Makefile                    build → plugin/bin/orchctl; test; install (~/.local/bin/orchctl → plugin/bin/orchctl, ~/.local/bin/orch → plugin/scripts/orch-screen.sh)
+Makefile                    build → plugin/bin/orchctl; test; install (= orch setup)
 ```
 
 ### State

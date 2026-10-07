@@ -1,5 +1,4 @@
 BIN := plugin/bin/orchctl
-PREFIX ?= $(HOME)/.local/bin
 
 .PHONY: build test install
 build:
@@ -9,9 +8,6 @@ test:
 	go vet ./...
 	go test ./...
 
-# orchctl: the broker CLI that skills and hooks call. orch: the user's start
-# command (iTerm2 screen with the plugin loaded).
-install: build
-	mkdir -p $(PREFIX)
-	ln -sf $(CURDIR)/$(BIN) $(PREFIX)/orchctl
-	ln -sf $(CURDIR)/plugin/scripts/orch-screen.sh $(PREFIX)/orch
+# Same as `orch setup`: build, link orch + orchctl into ~/.local/bin, check deps.
+install:
+	bash plugin/scripts/orch-setup.sh
