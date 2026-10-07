@@ -1,6 +1,8 @@
 BIN := plugin/bin/orch
+# The skills call `orch` on PATH.
+PREFIX ?= $(HOME)/.local/bin
 
-.PHONY: build test vet install
+.PHONY: build test install
 build:
 	go build -o $(BIN) ./cmd/orch
 
@@ -8,7 +10,7 @@ test:
 	go vet ./...
 	go test ./...
 
-# Symlinks ~/bin/orch to the build output.
+# Symlinks $(PREFIX)/orch to the build output.
 install: build
-	mkdir -p $(HOME)/bin
-	ln -sf $(CURDIR)/$(BIN) $(HOME)/bin/orch
+	mkdir -p $(PREFIX)
+	ln -sf $(CURDIR)/$(BIN) $(PREFIX)/orch

@@ -349,16 +349,14 @@ func (h *handler) workerBash() (any, error) {
 		case g.commitsAll():
 			return deny("commit only your files, by path: git commit -- <file>…"), nil
 		case g.sub == "commit":
+			// A token is the orch's explicit go, so it overrides a pause (handover:
+			// pause → READY → commit-go).
 			var tokens int
-			var paused bool
 			if err := h.st.View(func(s *state.State) error {
-				tokens, paused = s.Tokens[issue], s.Paused[issue]
+				tokens = s.Tokens[issue]
 				return nil
 			}); err != nil {
 				return nil, err
-			}
-			if paused {
-				return deny(fmt.Sprintf("%s is paused by the orch: no commits until resumed", issue)), nil
 			}
 			if tokens <= 0 {
 				return deny(fmt.Sprintf("wait for the orch: orch wait %s commit (run in background)", issue)), nil

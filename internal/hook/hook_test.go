@@ -148,11 +148,16 @@ func TestPaused(t *testing.T) {
 	f.b.SetPaused("feat-a", true)
 	for _, in := range []map[string]any{
 		tool("Edit", map[string]any{"file_path": f.repo + "/src/a.go"}),
-		tool("Bash", map[string]any{"command": "git commit -m x -- src/a.go"}),
+		tool("Bash", map[string]any{"command": "echo x > src/a.go"}),
 	} {
 		if got, reason := decision(t, f.run("pre-tool", "w1", in)); got != "deny" || !strings.Contains(reason, "paused") {
 			t.Fatalf("got %s %q", got, reason)
 		}
+	}
+	// handover: a commit token overrides the pause
+	commit := tool("Bash", map[string]any{"command": "git commit -m x -- src/a.go"})
+	if got, reason := decision(t, f.run("pre-tool", "w1", commit)); got != "allow" {
+		t.Fatalf("paused commit with token: %s %q", got, reason)
 	}
 }
 

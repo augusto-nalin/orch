@@ -1,0 +1,20 @@
+{
+  "description": "orch broker: session registry, claim/commit gates, commit bookkeeping",
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/orch\" hook user-prompt", "timeout": 10 }] }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|Read",
+        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/orch\" hook pre-tool", "timeout": 10 }]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/orch\" hook post-tool", "timeout": 10 }]
+      }
+    ]
+  }
+}
