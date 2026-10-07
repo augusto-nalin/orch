@@ -29,9 +29,9 @@ Decisions made with the user:
 - Plan is implemented by the orch (via a worker), not by this session.
 
 ## Implementation note for the orch
-- Spawn one worker, e.g. `orch-v2`, **from the anr-ro checkout** so it sits on this
-  board. It works in `~/source/orch` with absolute paths and commits only there.
-  anr-ro claims don't apply to it; no other worker touches that repo.
+- One worker, `orch-v2`, spawned from `~/source/orch`, so it sits on that project's
+  own board. It works and commits only there; no other worker touches that repo.
+- orch is generic: no project-specific names in code, tests or docs.
 - **One commit per phase**, after the orch's go.
 - Go 1.23.6 is installed (`/opt/homebrew/bin/go`). Standard library only: JSON
   state, `syscall.Flock` for locking. No MCP SDK needed.
@@ -163,16 +163,16 @@ Removed, because the broker or hooks handle them: `CLAIM`, `NEED`, `COMMIT`, `RE
 1. **Core:** go.mod, `internal/project`, `internal/state` (flock, JSON, renderers),
    `internal/broker` (claims, contention, tokens, registry), CLI subcommands, `orch
    import`. Unit tests: claim/held/order/release handoff, commit tokens, paused flag,
-   concurrent writers (goroutines + flock), and import of a copy of the real anr-ro
-   state (`~/.claude/orch/.anr-ro-bak-2026-10-06/`).
+   concurrent writers (goroutines + flock), and import of a synthetic fixture in the
+   formats written by `orch-state.sh` (`testdata/`).
 2. **Hooks:** `orch hook …` handlers with table tests that feed fixture hook JSON
    (`session_id`, `cwd`, `tool_name`, `tool_input`, `hook_event_name`, `prompt`) and
    assert the decision JSON. Cover fail-open.
 3. **Plugin and skills:** plugin.json, hooks.json, the moved scripts and settings,
    the slimmed skills, the Makefile `install`.
-4. **Cutover (with the user):** `orch import` for anr-ro; restart the orch with the
-   plugin; resume multiversion with `--plugin-dir` (verify that flags apply on
-   `--resume`); retire `~/.claude/skills/orch` and `~/.claude/skills/worker`, keeping
+4. **Cutover (with the user):** `orch import` for each project with live state;
+   restart its orch with the plugin; resume its workers with `--plugin-dir`
+   (verify that flags apply on `--resume`); retire `~/.claude/skills/orch` and `~/.claude/skills/worker`, keeping
    the backups in `.bak-2026-10-06/`.
 
 ## Verification
@@ -193,7 +193,7 @@ Removed, because the broker or hooks handle them: `CLAIM`, `NEED`, `COMMIT`, `RE
     `orch wait` wakes it
   - A sends READY, the orch runs `commit-go A`, A commits once, and a second
     `git commit` is denied
-- **Context check:** after about 10 routed interactions in the real anr-ro orch,
+- **Context check:** after about 10 routed interactions in a real project's orch,
   measure growth per interaction from the transcript (assistant
   `usage.cache_read_input_tokens + input_tokens` deltas). Target ≤0.7k, versus about
   2k today.
