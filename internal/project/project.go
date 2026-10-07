@@ -17,13 +17,18 @@ type Project struct {
 	StateDir string // <home>/<name>
 }
 
-// Home is the base of all state dirs: $ORCH_HOME, else ~/.claude/orch.
+// Home is the base of all state dirs: $ORCH_HOME, else $XDG_STATE_HOME/orch, else
+// ~/.local/state/orch. Not under ~/.claude: the Bash sandbox protects that even
+// when allowed, and workers run orchctl through Bash.
 func Home() string {
 	if h := os.Getenv("ORCH_HOME"); h != "" {
 		return h
 	}
+	if x := os.Getenv("XDG_STATE_HOME"); x != "" {
+		return filepath.Join(x, "orch")
+	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".claude", "orch")
+	return filepath.Join(home, ".local", "state", "orch")
 }
 
 // Resolve finds the project for dir. Outside a git repo, dir itself is the root.

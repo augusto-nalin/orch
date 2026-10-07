@@ -82,7 +82,7 @@ func TestClaimHeldOrderRelease(t *testing.T) {
 	must(t, got, err, "GO")
 	// d still contested x.go; no auto grant after b releases
 	got, err = b.Release("b", nil)
-	must(t, got, err, "ok; x.go free, contested — needs orch order")
+	must(t, got, err, "ok; x.go free, contested — needs orchctl order")
 	got, err = b.Claim("a", "file", []string{"x.go"})
 	must(t, got, err, "HELD x.go by orch (contested)")
 	got, err = b.Order("x.go", []string{"d"})
@@ -276,7 +276,7 @@ func TestFull(t *testing.T) {
 		"| a | proj-a | active |  | spawned | 2026-10-06 |\n",
 		"(1 done/dropped rows hidden — see board.md)",
 		"- build — a (since 2026-10-06)\n",
-		"- build contested by b — needs orch order\n",
+		"- build contested by b — needs orchctl order\n",
 		"- a commit-go ×1\n",
 		"- [Q1] a: pick (asked 2026-10-06)\n",
 		"2026-10-06 a active: spawned\n",

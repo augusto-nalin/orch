@@ -1,4 +1,4 @@
-// Package hook implements `orch hook <event>`: Claude Code hook handlers that
+// Package hook implements `orchctl hook <event>`: Claude Code hook handlers that
 // keep the session registry and enforce the worker and orch rules on every tool
 // call. They read the hook JSON on stdin and write a decision JSON (or nothing).
 //
@@ -193,7 +193,8 @@ func (h *handler) role() (bool, error) {
 				sess.Name = a.Name
 				if a.Name == h.p.Name+"-orch" {
 					sess.Role = "orch"
-				} else if issue, ok := strings.CutPrefix(a.Name, h.p.Name+"-"); ok && issue != "" {
+				} else if issue, ok := strings.CutPrefix(a.Name, h.p.Name+"-"); ok && h.onBoard(issue) {
+					// only issues on the board: plain sessions get auto names like <project>-a3
 					sess.Role, sess.Issue = "worker", issue
 				}
 			}
@@ -204,6 +205,17 @@ func (h *handler) role() (bool, error) {
 	}
 	h.sess = sess
 	return sess.Role == "orch" || sess.Role == "worker", nil
+}
+
+func (h *handler) onBoard(issue string) bool {
+	found := false
+	h.st.View(func(s *state.State) error {
+		for _, r := range s.Rows {
+			found = found || r.Issue == issue
+		}
+		return nil
+	})
+	return issue != "" && found
 }
 
 // ---- decisions ----
@@ -312,7 +324,7 @@ func (h *handler) checkEdit(path, how string) (any, error) {
 		return deny(fmt.Sprintf("%s is paused by the orch: no edits until resumed", issue)), nil
 	}
 	if !held {
-		return deny(fmt.Sprintf("claim first%s: orch claim %s %s", how, issue, rel)), nil
+		return deny(fmt.Sprintf("claim first%s: orchctl claim %s %s", how, issue, rel)), nil
 	}
 	return nil, nil
 }
@@ -359,7 +371,7 @@ func (h *handler) workerBash() (any, error) {
 				return nil, err
 			}
 			if tokens <= 0 {
-				return deny(fmt.Sprintf("wait for the orch: orch wait %s commit (run in background)", issue)), nil
+				return deny(fmt.Sprintf("wait for the orch: orchctl wait %s commit (run in background)", issue)), nil
 			}
 			if err := h.b.SetHead(issue, h.env.Head(gdir)); err != nil {
 				return nil, err

@@ -189,7 +189,7 @@ func release(s *state.State, today, issue string, items []string, log logf) stri
 	parts = append(parts, handoffs(s, today, log)...)
 	for _, k := range sortedKeys(s.Contested) {
 		if ownerOf(s, keyClaim(k)) == "" {
-			parts = append(parts, state.KeyItem(k)+" free, contested — needs orch order")
+			parts = append(parts, state.KeyItem(k)+" free, contested — needs orchctl order")
 		}
 	}
 	log("%s release %s", issue, strings.Join(dropped, ", "))
@@ -226,7 +226,7 @@ func handoffs(s *state.State, today string, log logf) []string {
 		s.Queues[k] = q[1:]
 		grantPending(s, today, head)
 		out = append(out, state.KeyItem(k)+" → "+head)
-		log("%s → %s (orch order)", state.KeyItem(k), head)
+		log("%s → %s (orchctl order)", state.KeyItem(k), head)
 	}
 	prune(s)
 	return out
@@ -282,7 +282,7 @@ func (b *Broker) Order(item string, issues []string) (string, error) {
 			}
 		}
 		s.Queues[k] = q
-		log("orch order %s: %s", item, strings.Join(issues, ", "))
+		log("orchctl order %s: %s", item, strings.Join(issues, ", "))
 		if h := handoffs(s, b.St.Today(), log); len(h) > 0 {
 			out = "GO " + strings.Join(h, "; ")
 		} else if owner != "" {

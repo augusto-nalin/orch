@@ -113,7 +113,7 @@ func (st *Store) Import(force bool) (*State, error) {
 		}
 		*s = *Parse(string(board), string(qs))
 		out = s
-		logf("orch import: %d rows, %d claims, %d questions", len(s.Rows), len(s.Claims), len(s.Questions))
+		logf("orchctl import: %d rows, %d claims, %d questions", len(s.Rows), len(s.Claims), len(s.Questions))
 		return nil
 	})
 	if err != nil {

@@ -36,12 +36,17 @@ Decisions made with the user:
 - Go 1.23.6 is installed (`/opt/homebrew/bin/go`). Standard library only: JSON
   state, `syscall.Flock` for locking. No MCP SDK needed.
 
+## Naming
+- `orch` is the user's start command: the iTerm2 orchestrator screen with the plugin
+  loaded (`plugin/scripts/orch-screen.sh`). No tmux.
+- `orchctl` is the broker CLI that skills, hooks and workers call.
+
 ## Architecture
 
 ### Repo layout (`~/source/orch`)
 ```
 go.mod                      module orch, go 1.23
-cmd/orch/main.go            CLI entry: subcommands + `orch hook <event>`
+cmd/orchctl/main.go         CLI entry: subcommands + `orchctl hook <event>`
 internal/state/             state.json load/save under flock, board.md/questions.md render, log append
 internal/broker/            claims, waits, commit tokens, contention queue, registry (session→role/issue)
 internal/hook/              hook handlers (read JSON on stdin, write decision JSON)
@@ -50,20 +55,22 @@ plugin/.claude-plugin/plugin.json
 plugin/hooks/hooks.json     → "${CLAUDE_PLUGIN_ROOT}/bin/orch" hook <event>
 plugin/skills/orch/SKILL.md      slimmed (see Skills)
 plugin/skills/worker/SKILL.md    slimmed
-plugin/scripts/             orch-screen.sh, orch-iterm.sh, orch-pane.sh, orch-close.sh (moved from ~/.claude/skills/orch)
-plugin/orch-settings.json   moved from ~/.claude/skills/orch (caveman off, you-should-know on)
-plugin/bin/orch             build output (gitignored)
-Makefile                    build → plugin/bin/orch; test; install (symlink ~/bin/orch → plugin/bin/orch)
+plugin/scripts/             orch-screen.sh (`orch` start command), orch-iterm.sh, orch-pane.sh, orch-close.sh (moved from ~/.claude/skills/orch; iTerm2 only)
+plugin/orch-settings.json   moved from ~/.claude/skills/orch (caveman off, you-should-know on, state dir writable)
+plugin/worker-settings.json passed to workers: state dir writable in the sandbox, orchctl allowed
+plugin/bin/orchctl          build output (gitignored)
+Makefile                    build → plugin/bin/orchctl; test; install (~/.local/bin/orchctl → plugin/bin/orchctl, ~/.local/bin/orch → plugin/scripts/orch-screen.sh)
 ```
 
 ### State
-- State lives in `~/.claude/orch/<project>/state.json`, under an exclusive flock on
+- State lives in `~/.local/state/orch/<project>/state.json` (not `~/.claude`: the Bash
+  sandbox protects it even when allowed, and workers run `orchctl` through Bash), under an exclusive flock on
   `state.lock` for every read-modify-write. It holds: board rows, claims, contention
   queue, commit tokens, open and answered question index, and the session registry.
 - `board.md`, `questions.md` and `log.md` stay as human-readable views, rendered or
   appended by the binary.
 - `issues/<issue>.md` stays owned by workers, unchanged.
-- A one-time `orch import` parses today's `board.md` (rows and `## Claims`) and
+- A one-time `orchctl import` parses today's `board.md` (rows and `## Claims`) and
   `questions.md` into `state.json`. Port the formats handled by
   `~/.claude/skills/orch/orch-state.sh` (row/claim/release/q/a/log). That script is
   the reference and is retired after cutover.
@@ -72,23 +79,23 @@ Makefile                    build → plugin/bin/orch; test; install (symlink ~/
 Worker:
 | command | result |
 |---|---|
-| `orch claim <issue> <file>…` | `GO`, or `HELD <file> by <issue>`, which queues the request as *contested* |
-| `orch need <issue> build` | `GO` or `HELD build by <issue>` (same contention rules) |
-| `orch release <issue> [<file>…]` | drops claims (all if no files); a contested item passes to whoever the orch ordered next |
-| `orch wait <issue> go\|commit` | blocks until the claim or need is granted, or a commit token exists; prints `GO`/`COMMIT`. Run with `run_in_background` so the harness wakes the worker on exit |
+| `orchctl claim <issue> <file>…` | `GO`, or `HELD <file> by <issue>`, which queues the request as *contested* |
+| `orchctl need <issue> build` | `GO` or `HELD build by <issue>` (same contention rules) |
+| `orchctl release <issue> [<file>…]` | drops claims (all if no files); a contested item passes to whoever the orch ordered next |
+| `orchctl wait <issue> go\|commit` | blocks until the claim or need is granted, or a commit token exists; prints `GO`/`COMMIT`. Run with `run_in_background` so the harness wakes the worker on exit |
 
 Orch:
 | command | result |
 |---|---|
-| `orch full` | startup view (same content as today's `orch-state.sh full`) |
-| `orch row <issue> <status> ["outcome"]` | board row; auto-logs |
-| `orch q <issue> "<gist>"` → `Q172` / `orch a <Qn>` | question index; auto-logs |
-| `orch order <item> <issue> [<issue>…]` | decides a contested item's queue: the first issue gets it now if free, the rest in order on release |
-| `orch commit-go <issue> [n]` | grants n (default 1) commit tokens; wakes the worker's `orch wait … commit` |
-| `orch pause <issue>` / `orch resume <issue>` | sets a flag that the hooks enforce (edits denied while paused) |
-| `orch log "<text>"` | rarely needed; the other commands log themselves |
+| `orchctl full` | startup view (same content as today's `orch-state.sh full`) |
+| `orchctl row <issue> <status> ["outcome"]` | board row; auto-logs |
+| `orchctl q <issue> "<gist>"` → `Q172` / `orchctl a <Qn>` | question index; auto-logs |
+| `orchctl order <item> <issue> [<issue>…]` | decides a contested item's queue: the first issue gets it now if free, the rest in order on release |
+| `orchctl commit-go <issue> [n]` | grants n (default 1) commit tokens; wakes the worker's `orchctl wait … commit` |
+| `orchctl pause <issue>` / `orchctl resume <issue>` | sets a flag that the hooks enforce (edits denied while paused) |
+| `orchctl log "<text>"` | rarely needed; the other commands log themselves |
 
-Hooks only: `orch hook user-prompt`, `orch hook pre-tool`, `orch hook post-tool`.
+Hooks only: `orchctl hook user-prompt`, `orchctl hook pre-tool`, `orchctl hook post-tool`.
 
 ### Hooks (`plugin/hooks/hooks.json`)
 Hooks are active only in sessions launched with the plugin, so the user's normal
@@ -102,12 +109,12 @@ sessions are unaffected.
      Verify first that `--resume` keeps the same session_id.
 2. **PreToolUse `Edit|Write|NotebookEdit` (workers).** If `file_path` is inside the
    project checkout and not claimed by this worker's issue, or the issue is paused →
-   `permissionDecision: deny` with the reason `claim first: orch claim <issue> <file>`.
+   `permissionDecision: deny` with the reason `claim first: orchctl claim <issue> <file>`.
    - Paths outside the checkout (the issue file in the state dir, scratch) are allowed.
 3. **PreToolUse `Bash` (workers).**
    - `git add -A|--all|.` and `git commit -a|--all` → deny.
    - `git commit` without a commit token → deny with the reason
-     `wait for the orch: orch wait <issue> commit`.
+     `wait for the orch: orchctl wait <issue> commit`.
    - With a token → allow; the user's existing "ask" hook in `~/.claude/settings.json`
      still prompts, since deny/ask/allow combine and ask is kept.
    - Also fire a macOS notification (`osascript -e 'display notification …'`):
@@ -124,18 +131,18 @@ sessions are unaffected.
    on unclaimed repo paths. Best effort.
 
 The hooks must exit fast (Go binary, no network) and fail **open** on internal errors
-(log to `~/.claude/orch/<project>/hook-errors.log`), so a broker bug never blocks work.
+(log to `~/.local/state/orch/<project>/hook-errors.log`), so a broker bug never blocks work.
 
 ### Message protocol after v2 (worker → orch, still SendMessage, ultra)
 Kept, because each needs judgment or holds a decision:
 - `Q` (dialog-ready, as today)
 - `DECIDED`
 - `READY <issue>: <outcome> | done|handover | open: …` (the orch decides the commit order)
-- `HELD <issue>: <item> by <other>` (the orch decides the order → `orch order`)
+- `HELD <issue>: <item> by <other>` (the orch decides the order → `orchctl order`)
 - `NOTE`, `ANSWERED-DIRECT`, `RELATED`, `CONFLICT`
 
 Removed, because the broker or hooks handle them: `CLAIM`, `NEED`, `COMMIT`, `REPORT`,
-`GO`/`COMMIT-GO` messages from the orch (the worker wakes from `orch wait`).
+`GO`/`COMMIT-GO` messages from the orch (the worker wakes from `orchctl wait`).
 
 ### Skills (slimmed; moved into the plugin)
 - **orch**: keep the router principles (conversation and decisions only, pointers
@@ -144,9 +151,9 @@ Removed, because the broker or hooks handle them: `CLAIM`, `NEED`, `COMMIT`, `RE
   protocol table with the short v2 list. Replace the state section with the CLI
   commands. Spawn command adds `--plugin-dir ~/source/orch/plugin`.
 - **worker**: keep issue-file ownership, the template, stay-on-issue, and "the user
-  decides". Turns and commits become: `orch claim` → on `HELD`, send `HELD` to the
-  orch, run `orch wait <issue> go` in the background, end the turn. Done → `READY`,
-  `orch wait <issue> commit` in the background, then exactly one commit of your own
+  decides". Turns and commits become: `orchctl claim` → on `HELD`, send `HELD` to the
+  orch, run `orchctl wait <issue> go` in the background, end the turn. Done → `READY`,
+  `orchctl wait <issue> commit` in the background, then exactly one commit of your own
   files. Note in the skill that hooks enforce all of this.
 - Both skills shrink by about 40%, so less fixed context.
 
@@ -165,19 +172,19 @@ Removed, because the broker or hooks handle them: `CLAIM`, `NEED`, `COMMIT`, `RE
    import`. Unit tests: claim/held/order/release handoff, commit tokens, paused flag,
    concurrent writers (goroutines + flock), and import of a synthetic fixture in the
    formats written by `orch-state.sh` (`testdata/`).
-2. **Hooks:** `orch hook …` handlers with table tests that feed fixture hook JSON
+2. **Hooks:** `orchctl hook …` handlers with table tests that feed fixture hook JSON
    (`session_id`, `cwd`, `tool_name`, `tool_input`, `hook_event_name`, `prompt`) and
    assert the decision JSON. Cover fail-open.
 3. **Plugin and skills:** plugin.json, hooks.json, the moved scripts and settings,
    the slimmed skills, the Makefile `install`.
-4. **Cutover (with the user):** `orch import` for each project with live state;
+4. **Cutover (with the user):** `orchctl import` for each project with live state;
    restart its orch with the plugin; resume its workers with `--plugin-dir`
    (verify that flags apply on `--resume`); retire `~/.claude/skills/orch` and `~/.claude/skills/worker`, keeping
    the backups in `.bak-2026-10-06/`.
 
 ## Verification
 - `go test ./...` passes; `go vet` clean.
-- **Hook smoke tests** (no model): `echo '<fixture>' | plugin/bin/orch hook pre-tool`
+- **Hook smoke tests** (no model): `echo '<fixture>' | plugin/bin/orchctl hook pre-tool`
   for:
   - an unclaimed edit (deny)
   - a claimed edit (allow)
@@ -189,8 +196,8 @@ Removed, because the broker or hooks handle them: `CLAIM`, `NEED`, `COMMIT`, `RE
 - **Live end-to-end in a scratch git repo,** with two workers spawned through the
   plugin:
   - worker A claims X and edits it; worker B's edit of X is denied
-  - B gets `HELD`, the orch runs `orch order`, A releases, and B's background
-    `orch wait` wakes it
+  - B gets `HELD`, the orch runs `orchctl order`, A releases, and B's background
+    `orchctl wait` wakes it
   - A sends READY, the orch runs `commit-go A`, A commits once, and a second
     `git commit` is denied
 - **Context check:** after about 10 routed interactions in a real project's orch,

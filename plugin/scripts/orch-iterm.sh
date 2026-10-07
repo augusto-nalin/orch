@@ -7,7 +7,7 @@
 # Pane ids live in <state dir>/screen ("agents <id>", "orch <id>", "worker <name> <id>").
 set -u
 plugin=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-orch_bin="$plugin/bin/orch"
+orch_bin="$plugin/bin/orchctl"
 dir=$("$orch_bin" dir)
 project=$("$orch_bin" name)
 s="$project-orch"
@@ -72,7 +72,7 @@ screen)
   ;;
 pane)
   name="$2"
-  alive "$(get orch)" || { echo "no orchestrator screen — skipped"; exit 0; }
+  [ -s "$screen" ] && alive "$(get orch)" || { echo "no orchestrator screen — skipped"; exit 0; }
   running "$(get worker "$name")" && { echo "already shown"; exit 0; }
   id=$(running_id "$name"); [ -n "$id" ] || { echo "no running background session named $name"; exit 1; }
   # Split the widest top-row pane, so the row stays roughly even.

@@ -34,7 +34,7 @@ func RenderBoard(s *State) string {
 	return b.String()
 }
 
-// RenderWaiting lists ordered queues, then contested items awaiting `orch order`.
+// RenderWaiting lists ordered queues, then contested items awaiting `orchctl order`.
 func RenderWaiting(s *State) string {
 	var b strings.Builder
 	b.WriteString("## Waiting (turn order)\n")
@@ -47,7 +47,7 @@ func RenderWaiting(s *State) string {
 	}
 	for _, k := range sortedKeys(s.Contested) {
 		if q := s.Contested[k]; len(q) > 0 {
-			fmt.Fprintf(&b, "- %s contested by %s — needs orch order\n", KeyItem(k), strings.Join(q, ", "))
+			fmt.Fprintf(&b, "- %s contested by %s — needs orchctl order\n", KeyItem(k), strings.Join(q, ", "))
 			n++
 		}
 	}

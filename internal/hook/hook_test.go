@@ -106,20 +106,20 @@ func TestPreTool(t *testing.T) {
 	}{
 		{"claimed edit", "w1", "Edit", map[string]any{"file_path": f.repo + "/src/a.go"}, "allow", ""},
 		{"claimed dir", "w1", "Write", map[string]any{"file_path": f.repo + "/docs/new/x.md"}, "allow", ""},
-		{"unclaimed edit", "w1", "Edit", map[string]any{"file_path": f.repo + "/src/b.go"}, "deny", "claim first: orch claim feat-a src/b.go"},
-		{"other's file", "w2", "Write", map[string]any{"file_path": f.repo + "/src/a.go"}, "deny", "orch claim feat-b src/a.go"},
-		{"notebook", "w2", "NotebookEdit", map[string]any{"notebook_path": f.repo + "/n.ipynb"}, "deny", "orch claim feat-b n.ipynb"},
+		{"unclaimed edit", "w1", "Edit", map[string]any{"file_path": f.repo + "/src/b.go"}, "deny", "claim first: orchctl claim feat-a src/b.go"},
+		{"other's file", "w2", "Write", map[string]any{"file_path": f.repo + "/src/a.go"}, "deny", "orchctl claim feat-b src/a.go"},
+		{"notebook", "w2", "NotebookEdit", map[string]any{"notebook_path": f.repo + "/n.ipynb"}, "deny", "orchctl claim feat-b n.ipynb"},
 		{"outside checkout", "w2", "Write", map[string]any{"file_path": stateDir + "/issues/feat-b.md"}, "allow", ""},
 		{"unregistered session", "x9", "Edit", map[string]any{"file_path": f.repo + "/src/b.go"}, "allow", ""},
 		{"read is free", "w2", "Read", map[string]any{"file_path": f.repo + "/src/a.go"}, "allow", ""},
 		{"git add -A", "w1", "Bash", map[string]any{"command": "git add -A"}, "deny", "by path"},
 		{"git commit -am", "w1", "Bash", map[string]any{"command": "git add src/a.go && git commit -am x"}, "deny", "git commit -- <file>"},
-		{"commit no token", "w2", "Bash", map[string]any{"command": "git commit -m x -- src/a.go"}, "deny", "orch wait feat-b commit"},
+		{"commit no token", "w2", "Bash", map[string]any{"command": "git commit -m x -- src/a.go"}, "deny", "orchctl wait feat-b commit"},
 		{"commit other repo", "w2", "Bash", map[string]any{"command": "cd /tmp && git commit -m x"}, "allow", ""},
-		{"sed -i unclaimed", "w1", "Bash", map[string]any{"command": "sed -i '' 's/a/b/' src/b.go"}, "deny", "claim first (Bash edits count too): orch claim feat-a src/b.go"},
+		{"sed -i unclaimed", "w1", "Bash", map[string]any{"command": "sed -i '' 's/a/b/' src/b.go"}, "deny", "claim first (Bash edits count too): orchctl claim feat-a src/b.go"},
 		{"redirect claimed", "w1", "Bash", map[string]any{"command": "echo x > src/a.go"}, "allow", ""},
 		{"redirect via cd", "w2", "Bash", map[string]any{"command": "cd src && cat a > b.go", "cwd": "/"}, "allow", ""},
-		{"redirect into repo via cd", "w2", "Bash", map[string]any{"command": "cd " + f.repo + "/src && cat a > b.go"}, "deny", "orch claim feat-b src/b.go"},
+		{"redirect into repo via cd", "w2", "Bash", map[string]any{"command": "cd " + f.repo + "/src && cat a > b.go"}, "deny", "orchctl claim feat-b src/b.go"},
 		{"orch reads repo", "o1", "Read", map[string]any{"file_path": f.repo + "/src/a.go"}, "deny", "send a pointer to the worker"},
 		{"orch reads image", "o1", "Read", map[string]any{"file_path": "/tmp/shot.png"}, "deny", "no images"},
 		{"orch reads state", "o1", "Read", map[string]any{"file_path": stateDir + "/issues/feat-a.md"}, "allow", ""},
@@ -220,7 +220,7 @@ func TestAgentsFallback(t *testing.T) {
 	f := newFixture(t)
 	f.b.Row("feat-a", "active", "") // state.json exists, no registry entry
 	f.b.Claim("feat-a", "file", []string{"src/a.go"})
-	f.agents = []Agent{{SessionID: "w1", Name: "demo-feat-a"}, {SessionID: "o1", Name: "demo-orch"}}
+	f.agents = []Agent{{SessionID: "w1", Name: "demo-feat-a"}, {SessionID: "o1", Name: "demo-orch"}, {SessionID: "p1", Name: "demo-a3"}}
 	edit := tool("Edit", map[string]any{"file_path": f.repo + "/src/b.go"})
 	if got, _ := decision(t, f.run("pre-tool", "w1", edit)); got != "deny" {
 		t.Fatalf("resolved worker: %s", got)
@@ -232,6 +232,11 @@ func TestAgentsFallback(t *testing.T) {
 	if got, _ := decision(t, f.run("pre-tool", "o1", read)); got != "deny" {
 		t.Fatalf("resolved orch: %s", got)
 	}
+	// a plain session with an auto name (no board row) is not a worker
+	if got, _ := decision(t, f.run("pre-tool", "p1", edit)); got != "allow" {
+		t.Fatalf("auto-named session: %s", got)
+	}
+	f.agentsN--
 	// unknown session cached as none: allowed, no second lookup
 	f.run("pre-tool", "zz", edit)
 	f.run("pre-tool", "zz", edit)

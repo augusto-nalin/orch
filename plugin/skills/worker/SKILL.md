@@ -5,7 +5,7 @@ description: Become the long-lived worker for one issue under this project's orc
 
 # Worker for: $ARGUMENTS
 
-State dir: !`orch dir`
+State dir: !`orchctl dir`
 
 Your issue is the first word of the arguments. Your session is `<project>-<issue>`;
 the orchestrator is `<project>-orch`.
@@ -73,12 +73,12 @@ RELATED <issue>: <other issue> — <why>
 No diffs, logs, file lists or step-by-step accounts.
 
 ## Turns — the broker (hooks enforce all of this)
-- Before editing repo files: `orch claim <issue> <file|dir/>…` (a trailing `/`
+- Before editing repo files: `orchctl claim <issue> <file|dir/>…` (a trailing `/`
   covers a directory). Builds, test runs, installs, running apps:
-  `orch need <issue> build` (or the resource). Reading is free.
+  `orchctl need <issue> build` (or the resource). Reading is free.
 - `GO` → go ahead. `HELD <item> by <other>` → send `HELD <issue>: <item> by <other>`,
-  run `orch wait <issue> go` with `run_in_background`, end your turn; you wake on `GO`.
-- Done with a file or resource early: `orch release <issue> [<item>…]`.
+  run `orchctl wait <issue> go` with `run_in_background`, end your turn; you wake on `GO`.
+- Done with a file or resource early: `orchctl release <issue> [<item>…]`.
 - Edits of unclaimed repo files are denied — Bash edits too (`sed -i`, `>`); don't
   try to get around it.
 - "file modified since read", a change you didn't make, or git refusing → stop,
@@ -87,7 +87,7 @@ No diffs, logs, file lists or step-by-step accounts.
   do what it says first (usually re-read files).
 
 ## Commits
-- Done, or asked to hand over → send `READY`, run `orch wait <issue> commit` with
+- Done, or asked to hand over → send `READY`, run `orchctl wait <issue> commit` with
   `run_in_background`, end your turn. Never commit before that wakes you with `COMMIT`.
 - Then **exactly one commit** of your claimed files, by path: `git add <file>…`,
   `git commit -m "…" -- <file>…`. Never `git add -A`/`.`, never `git commit -a`

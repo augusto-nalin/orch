@@ -54,7 +54,7 @@ type State struct {
 	Rows      []Row               `json:"rows"`
 	Claims    []Claim             `json:"claims"`
 	Pending   map[string][]Claim  `json:"pending,omitempty"`   // issue → its refused request, granted whole or by handoff
-	Contested map[string][]string `json:"contested,omitempty"` // item key → issues refused, awaiting `orch order`
+	Contested map[string][]string `json:"contested,omitempty"` // item key → issues refused, awaiting `orchctl order`
 	Queues    map[string][]string `json:"queues,omitempty"`    // item key → issues in the order the orch set
 	Tokens    map[string]int      `json:"tokens,omitempty"`    // issue → commit tokens
 	Paused    map[string]bool     `json:"paused,omitempty"`

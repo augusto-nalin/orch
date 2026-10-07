@@ -1,16 +1,17 @@
-BIN := plugin/bin/orch
-# The skills call `orch` on PATH.
+BIN := plugin/bin/orchctl
 PREFIX ?= $(HOME)/.local/bin
 
 .PHONY: build test install
 build:
-	go build -o $(BIN) ./cmd/orch
+	go build -o $(BIN) ./cmd/orchctl
 
 test:
 	go vet ./...
 	go test ./...
 
-# Symlinks $(PREFIX)/orch to the build output.
+# orchctl: the broker CLI that skills and hooks call. orch: the user's start
+# command (iTerm2 screen with the plugin loaded).
 install: build
 	mkdir -p $(PREFIX)
-	ln -sf $(CURDIR)/$(BIN) $(PREFIX)/orch
+	ln -sf $(CURDIR)/$(BIN) $(PREFIX)/orchctl
+	ln -sf $(CURDIR)/plugin/scripts/orch-screen.sh $(PREFIX)/orch

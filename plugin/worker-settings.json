@@ -1,13 +1,11 @@
 {
-  "enabledPlugins": {
-    "cc-plugin-you-should-know@builtin": true,
-    "caveman@caveman": false
-  },
   "sandbox": { "filesystem": { "allowWrite": ["~/.local/state/orch"] } },
   "permissions": {
     "allow": [
       "Bash(orchctl:*)",
-      "Read(~/.local/state/orch/**)"
+      "Read(~/.local/state/orch/**)",
+      "Edit(~/.local/state/orch/**)",
+      "Write(~/.local/state/orch/**)"
     ]
   }
 }

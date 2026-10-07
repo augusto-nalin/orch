@@ -1,4 +1,4 @@
-// Command orch is the broker for the /orch and /worker skills: one-line commands
+// Command orchctl is the broker for the /orch and /worker skills: one-line commands
 // over the project's state (see PLAN.md). The project is resolved from the cwd.
 package main
 
@@ -18,7 +18,7 @@ import (
 	"orch/internal/state"
 )
 
-const usage = `usage: orch <command>
+const usage = `usage: orchctl <command>
 worker:
   claim <issue> <file>…        GO | HELD <file> by <issue>
   need <issue> <resource>…     GO | HELD <resource> by <issue>
