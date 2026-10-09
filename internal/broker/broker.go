@@ -399,6 +399,7 @@ func (b *Broker) Row(issue, status, outcome string) (string, error) {
 			delete(s.Paused, issue)
 			delete(s.Stalled, issue)
 			delete(s.Spoke, issue)
+			delete(s.Unreported, issue)
 		}
 		return nil
 	})
@@ -588,6 +589,12 @@ func (b *Broker) Committed(issue, head string) (string, error) {
 		sha := head[:min(7, len(head))]
 		log("%s commit %s", issue, sha)
 		release(s, b.St.Today(), issue, nil, log)
+		if i := slices.IndexFunc(s.Rows, func(r state.Row) bool { return r.Issue == issue }); i >= 0 {
+			s.Rows[i].Outcome, s.Rows[i].Updated = "committed "+sha, b.St.Today()
+		}
+		// The orch only hears of it from the worker (COMMITTED); the Stop guard holds it to that.
+		delete(s.Spoke, issue)
+		s.Unreported[issue] = sha
 		out = sha
 		return nil
 	})
@@ -596,26 +603,30 @@ func (b *Broker) Committed(issue, head string) (string, error) {
 
 // ---- turn ends (hooks) ----
 
-// Spoke marks that issue's worker messaged the orch or started a wait this turn.
+// Spoke marks that issue's worker messaged the orch or started a wait this turn;
+// a commit it hadn't reported counts as reported.
 func (b *Broker) Spoke(issue string) error {
 	return b.St.Update(func(s *state.State, log logf) error {
 		s.Spoke[issue] = true
+		delete(s.Unreported, issue)
 		return nil
 	})
 }
 
 // TurnEnd runs when issue's worker ends a turn: it clears the turn's Spoke mark
-// and reports whether the worker ends it silent — holding claims, not paused, and
-// without having messaged the orch or started a wait.
-func (b *Broker) TurnEnd(issue string) (silent bool, err error) {
+// and reports whether the worker ends it silent — holding claims or an unreported
+// commit (its sha in unreported), not paused, and without having messaged the orch
+// or started a wait.
+func (b *Broker) TurnEnd(issue string) (silent bool, unreported string, err error) {
 	err = b.St.Update(func(s *state.State, log logf) error {
 		spoke := s.Spoke[issue]
 		delete(s.Spoke, issue)
+		unreported = s.Unreported[issue]
 		held := slices.ContainsFunc(s.Claims, func(c state.Claim) bool { return c.Issue == issue })
-		silent = held && !spoke && !s.Paused[issue]
+		silent = (held || unreported != "") && !spoke && !s.Paused[issue]
 		return nil
 	})
-	return silent, err
+	return silent, unreported, err
 }
 
 // Stall records that issue's turn was ended by an API error.

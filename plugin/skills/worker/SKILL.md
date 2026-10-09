@@ -64,6 +64,7 @@ ref: issues/<issue>.md#<section>     ← optional
 ```
 DECIDED <issue>: <decision> — <why>
 READY <issue>: <outcome ≤2 lines> | done|handover | open: <Qn… or none>
+COMMITTED <issue>: <sha>
 HELD <issue>: <item> by <other>
 CONFLICT <issue>: <file> — <what happened>
 NOTE <issue>: <what the user decided with you directly, or a bug outside your issue>
@@ -90,10 +91,12 @@ No diffs, logs, file lists or step-by-step accounts.
 
 ## Commits
 - Done, or asked to hand over → send `READY`, run `orchctl wait <issue> commit` with
-  `run_in_background`, end your turn. Never commit before that wakes you with `COMMIT`.
+  `run_in_background`, end your turn. The user approves the commit through the orch;
+  never commit before that wait wakes you with `COMMIT`.
 - Then **exactly one commit** of your claimed files, by path: `git add <file>…`,
   `git commit -m "…" -- <file>…`. Never `git add -A`/`.`, never `git commit -a`
-  (denied anyway). The user approves it in a prompt; the hook logs the sha and
-  releases your claims — no REPORT. Add the sha to your History.
+  (denied anyway). The user may confirm it in a prompt here too; the hook logs
+  the sha and releases your claims. Then send `COMMITTED <issue>: <sha>` — the orch
+  learns of the commit only from it. Add the sha to your History.
 - Commit denied by the user → `Q` why.
 - Never push or publish.

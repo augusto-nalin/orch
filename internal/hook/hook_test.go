@@ -164,6 +164,7 @@ func TestPaused(t *testing.T) {
 func TestCommitFlow(t *testing.T) {
 	f := newFixture(t)
 	f.prompt("w1", "/worker feat-a")
+	f.b.Row("feat-a", "idle", "READY: x")
 	f.b.Claim("feat-a", "file", []string{"src/a.go"})
 	f.b.CommitGo("feat-a", 1)
 	commit := tool("Bash", map[string]any{"command": "git add src/a.go && git commit -q -m x -- src/a.go"})
@@ -177,15 +178,32 @@ func TestCommitFlow(t *testing.T) {
 	f.head = "bbbbbbb2c3" // the commit landed
 	commit["hook_event_name"] = "PostToolUse"
 	out := f.run("post-tool", "w1", commit)
-	if !strings.Contains(out, `"additionalContext":"orch: commit bbbbbbb logged, claims released"`) {
+	if !strings.Contains(out, `"additionalContext":"orch: commit bbbbbbb logged, claims released. Now tell the orch: COMMITTED feat-a: bbbbbbb"`) {
 		t.Fatalf("post out %q", out)
 	}
 	f.b.St.View(func(s *state.State) error {
 		if len(s.Claims) != 0 || s.Tokens["feat-a"] != 0 || len(s.Heads) != 0 {
 			t.Fatalf("after commit %+v", s)
 		}
+		if s.Rows[0].Outcome != "committed bbbbbbb" {
+			t.Fatalf("row %+v", s.Rows[0])
+		}
 		return nil
 	})
+	// The orch hears of it only from the worker: a silent stop is sent back once.
+	if got := f.stop("w1", false); got != "block" {
+		t.Fatalf("unreported commit: %s", got)
+	}
+	if got := f.stop("w1", true); got != "allow" {
+		t.Fatalf("second stop: %s", got)
+	}
+	f.run("pre-tool", "w1", tool("SendMessage", map[string]any{"to": "demo-orch", "message": "COMMITTED feat-a: bbbbbbb"}))
+	if got := f.stop("w1", false); got != "allow" {
+		t.Fatalf("after COMMITTED: %s", got)
+	}
+	if got := f.stop("w1", false); got != "allow" {
+		t.Fatalf("reported, no claims: %s", got)
+	}
 	log, _ := os.ReadFile(filepath.Join(f.p.StateDir, "log.md"))
 	if !strings.Contains(string(log), "feat-a commit bbbbbbb") {
 		t.Fatalf("log:\n%s", log)

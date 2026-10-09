@@ -434,8 +434,8 @@ func (h *handler) abs(dir, p string) string {
 	return filepath.Join(dir, p)
 }
 
-// postTool: after a worker's git commit lands, use the token, release its claims
-// and log the sha (this replaces the worker's REPORT).
+// postTool: after a worker's git commit lands, use the token, release its claims,
+// log the sha and put it on the board; the worker then tells the orch (COMMITTED).
 func (h *handler) postTool() (any, error) {
 	if h.in.ToolName != "Bash" {
 		return nil, nil
@@ -467,7 +467,7 @@ func (h *handler) postTool() (any, error) {
 		}
 		o := &postOut{}
 		o.HookSpecificOutput.HookEventName = "PostToolUse"
-		o.HookSpecificOutput.AdditionalContext = fmt.Sprintf("orch: commit %s logged, claims released", sha)
+		o.HookSpecificOutput.AdditionalContext = fmt.Sprintf("orch: commit %[2]s logged, claims released. Now tell the orch: COMMITTED %[1]s: %[2]s", h.sess.Issue, sha)
 		return o, nil
 	}
 	return nil, nil
@@ -487,9 +487,14 @@ func (h *handler) stop() (any, error) {
 	if err != nil || !ok || h.sess.Role != "worker" {
 		return nil, err
 	}
-	silent, err := h.b.TurnEnd(h.sess.Issue)
+	silent, sha, err := h.b.TurnEnd(h.sess.Issue)
 	if err != nil || !silent || h.in.StopHookActive {
 		return nil, err
+	}
+	if sha != "" {
+		return &stopOut{Decision: "block", Reason: fmt.Sprintf(
+			"orch: you committed %[2]s but haven't told the orch, so it still thinks the commit is pending. "+
+				"Send it: COMMITTED %[1]s: %[2]s", h.sess.Issue, sha)}, nil
 	}
 	return &stopOut{Decision: "block", Reason: fmt.Sprintf(
 		"orch: you hold claims and sent the orch nothing this turn, so it won't know. "+

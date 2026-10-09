@@ -50,13 +50,13 @@ Change state only with `orchctl …` (one-line output) — never Edit, python or
 | worker sends Q | `orchctl q <issue> "<≤8-word gist>"` → `Q172` |
 | user answered | `orchctl a <Qn>` |
 | worker sends HELD | `orchctl order <item> <issue> [<issue>…]` (see Turns) |
-| commit may go | `orchctl commit-go <issue> [n]` |
+| user approved a commit | `orchctl commit-go <issue> [n]` |
 | stop / restart a worker's edits | `orchctl pause <issue>` / `orchctl resume <issue>` |
 | anything else worth a trail | `orchctl log "<issue> <ultra one-liner>"` (the rest log themselves) |
 
 Chain several in one Bash call. **Issue files (`issues/<issue>.md`) belong to the
-worker**; you never write them. Claims, the build, commits and releases are handled
-by the broker and hooks — workers don't message you for them.
+worker**; you never write them. Claims, the build and releases are handled by the
+broker and hooks — workers don't message you for them.
 
 ## Delegating
 Issue names: short kebab-case. Worker session = `<project>-<issue>`.
@@ -78,7 +78,8 @@ A message that breaks the format goes straight back as `FORMAT: <rule>`.
 |---|---|
 | `Q <issue>: <question>` + options (+ `ref:`) | `orchctl q`, `orchctl row … waiting-user`, ask the user (Asking) |
 | `DECIDED <issue>: <decision> — <why>` | hold it; one line to the user in your next reply |
-| `READY <issue>: <outcome> \| done\|handover \| open: …` | `orchctl row`; one or two sentences to the user; decide when it commits (Commits) |
+| `READY <issue>: <outcome> \| done\|handover \| open: …` | `orchctl row`; ask the user to approve its commit (Commits) |
+| `COMMITTED <issue>: <sha>` | `orchctl row <issue> idle "committed <sha>"`; one line to the user |
 | `HELD <issue>: <item> by <other>` | decide the order (Turns) |
 | `CONFLICT <issue>: <file> — <what>` | like HELD: who goes first; `orchctl pause` the other |
 | `ANSWERED-DIRECT <issue>: <Qn> → <answer>` | `orchctl a <Qn>`; it's a decision you hold |
@@ -106,14 +107,18 @@ One checkout, one holder per file or resource; the broker refuses the rest with
 trade-off — then ask the user. Then `orchctl order <item> <first> [<next>…]`: the first
 gets it now if free, the rest on release; their `orchctl wait` wakes them. To free files
 early: `orchctl pause <holder>` + `PAUSE <holder>: handover` → it sends `READY … handover`
-→ `orchctl commit-go <holder>`.
+→ commit it as usual (Commits).
 
-## Commits — you decide when
+## Commits — the user approves each one
 - A commit = a finished task; workers send `READY` and wait. Default **one commit
   per worker per task** (`orchctl commit-go <issue> 2` only when the split matters).
-- The worker decides what goes in it; you decide only *when*, one READY at a time.
-- On `orchctl commit-go`, the worker commits; a macOS notification tells the user to
-  attach and approve. The hook logs the sha and releases its claims — no REPORT.
+- The worker decides what goes in it; you decide the order, one READY at a time.
+- Each `READY` → `AskUserQuestion`: `header` = issue, `question` = "Commit <issue>?
+  <outcome>", options Approve / Reject. Never `commit-go` without that approval.
+- Approve → `orchctl commit-go <issue>`; tell the user the worker's own commit prompt
+  may need them to attach and confirm. Reject → `SendMessage` `user: "<verbatim>"`.
+- After the commit the worker sends `COMMITTED <issue>: <sha>` (the hook logs the
+  sha, releases its claims and puts it on the board). No `COMMITTED` = not committed.
 - Clean workspace: when no worker is mid-edit, `git status --porcelain | wc -l`.
   Nonzero → ask the workers that held claims to commit or clean up; still nonzero →
   tell the user.

@@ -50,20 +50,21 @@ type Session struct {
 }
 
 type State struct {
-	Version   int                 `json:"version"`
-	Rows      []Row               `json:"rows"`
-	Claims    []Claim             `json:"claims"`
-	Pending   map[string][]Claim  `json:"pending,omitempty"`   // issue → its refused request, granted whole or by handoff
-	Contested map[string][]string `json:"contested,omitempty"` // item key → issues refused, awaiting `orchctl order`
-	Queues    map[string][]string `json:"queues,omitempty"`    // item key → issues in the order the orch set
-	Tokens    map[string]int      `json:"tokens,omitempty"`    // issue → commit tokens
-	Paused    map[string]bool     `json:"paused,omitempty"`
-	Questions []Question          `json:"questions"`
-	NextQ     int                 `json:"next_q"`
-	Sessions  map[string]Session  `json:"sessions,omitempty"` // session_id → role
-	Heads     map[string]string   `json:"heads,omitempty"`    // issue → HEAD before its pending git commit
-	Stalled   map[string]string   `json:"stalled,omitempty"`  // issue → why its last turn died (API error), until it runs again
-	Spoke     map[string]bool     `json:"spoke,omitempty"`    // issue → messaged the orch or started a wait this turn
+	Version    int                 `json:"version"`
+	Rows       []Row               `json:"rows"`
+	Claims     []Claim             `json:"claims"`
+	Pending    map[string][]Claim  `json:"pending,omitempty"`   // issue → its refused request, granted whole or by handoff
+	Contested  map[string][]string `json:"contested,omitempty"` // item key → issues refused, awaiting `orchctl order`
+	Queues     map[string][]string `json:"queues,omitempty"`    // item key → issues in the order the orch set
+	Tokens     map[string]int      `json:"tokens,omitempty"`    // issue → commit tokens
+	Paused     map[string]bool     `json:"paused,omitempty"`
+	Questions  []Question          `json:"questions"`
+	NextQ      int                 `json:"next_q"`
+	Sessions   map[string]Session  `json:"sessions,omitempty"`   // session_id → role
+	Heads      map[string]string   `json:"heads,omitempty"`      // issue → HEAD before its pending git commit
+	Stalled    map[string]string   `json:"stalled,omitempty"`    // issue → why its last turn died (API error), until it runs again
+	Spoke      map[string]bool     `json:"spoke,omitempty"`      // issue → messaged the orch or started a wait this turn
+	Unreported map[string]string   `json:"unreported,omitempty"` // issue → sha of a commit it hasn't told the orch about yet
 }
 
 func New() *State {
@@ -97,6 +98,9 @@ func (s *State) init() {
 	}
 	if s.Spoke == nil {
 		s.Spoke = map[string]bool{}
+	}
+	if s.Unreported == nil {
+		s.Unreported = map[string]string{}
 	}
 	if s.NextQ < 1 {
 		s.NextQ = 1
