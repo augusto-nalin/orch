@@ -1,16 +1,21 @@
-# orch
+# ORCH
+ORCH (like orch-ard) sits between full autonomy and a single chat, agentic workflow, but without loosing control.
 
-orch sits between full autonomy and a single chat, agentic workflow, but without loosing control.
+It solves a simple problem, parallelise work, but still keeps you in control and aware of everything that has been done..
+
+## The orchestrator
+
+**Orchestrator** is long lived it keeps its context clean as actual work is delegated.
 
 You talk to the orchestrator, each issue gets its own Claude Code worker. 
 
-Workers are long lived, Worker are NOT ephemeral, workers are NOT agents.
+## Workers
+**Workers** are long lived, Worker are NOT ephemeral, workers are NOT agents.
 
-Workers keep you in the loop, asks questions, and permissions, or and do the work.
+**Workers** keep you in the loop, asks questions, and permissions, or and do the work.
 
-Worker takes a task and stays with it, for ever, if an issue appears, the same worker with all the context is re-alived.
+**Worker** takes a task and stays with it, for ever, if an issue appears, the same worker with all the context is re-alived.
 
-Orchestrator is long lived it keeps its context clean as actual work is delegated.
 
 ## Install
 
