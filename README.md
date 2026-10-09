@@ -10,7 +10,7 @@ It solves a simple problem, parallelise work, but still keeps you in control and
 You talk to the orchestrator, each issue gets its own Claude Code worker. 
 
 ## Workers
-**Workers** are long lived, Worker are NOT ephemeral, workers are NOT agents.
+**Workers** are long lived, are NOT ephemeral, and are NOT agents.
 
 **Workers** keep you in the loop, asks questions, and permissions, or and do the work.
 
