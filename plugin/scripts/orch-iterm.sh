@@ -59,8 +59,11 @@ screen)
   [ -n "$here" ] || { echo "not inside iTerm2"; exit 1; }
   live=$(running_id "$s")
   if [ -n "$live" ]; then cmd="claude attach $live"
-  elif [ "${2:-}" = "--resume" ]; then cmd="claude --resume $s --name $s --plugin-dir $plugin --settings $plugin/orch-settings.json"
-  else cmd="claude --name $s --plugin-dir $plugin --settings $plugin/orch-settings.json /orch:orch"; fi
+  else
+    flags=$("$orch_bin" flags orch) || exit 1
+    if [ "${2:-}" = "--resume" ]; then cmd="claude --resume $s --name $s $flags"
+    else cmd="claude --name $s $flags /orch:orch"; fi
+  fi
   orch=$(split "$here" horizontally "cd '$PWD' && $cmd")
   mkdir -p "$dir"             # first run in a project: the broker hasn't made it yet
   printf 'agents %s\norch %s\n' "$here" "$orch" > "$screen"

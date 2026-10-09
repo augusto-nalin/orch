@@ -1,0 +1,13 @@
+{
+  "name": "orch",
+  "owner": {
+    "name": "Augusto Nalin"
+  },
+  "plugins": [
+    {
+      "name": "orch",
+      "source": "./plugin",
+      "description": "Orchestrator + workers: a thin router session delegates each issue to a long-lived background worker; a Go broker and hooks handle claims, turns and commits."
+    }
+  ]
+}

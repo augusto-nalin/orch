@@ -61,15 +61,15 @@ by the broker and hooks — workers don't message you for them.
 ## Delegating
 Issue names: short kebab-case. Worker session = `<project>-<issue>`.
 - **New issue**: `orchctl row <issue> active "spawned"`, then from the project checkout:
-  `claude --bg --plugin-dir ~/source/orch/plugin --settings ~/source/orch/plugin/worker-settings.json --name <project>-<issue> "/orch:worker <issue> — user: \"<the user's words, verbatim>\" <pointers>" 2>&1 | tail -1`
+  `orchctl spawn <issue> "/orch:worker <issue> — user: \"<the user's words, verbatim>\" <pointers>"`
+  (starts `<project>-<issue>` in the background and shows its pane)
 - **One issue = one worker = one context.** A new bug or feature gets its own worker.
   Hand it to an existing one only on the user's explicit yes, sent as `user-confirmed:`.
 - Cross-worker knowledge: `FYI <issue>: see issues/<other>.md#<section>` — a pointer.
 - **Live worker** (in `ListAgents`): `SendMessage`.
 - **Stopped worker / reopen** (never one that's live):
-  `claude --resume <project>-<issue> --bg --plugin-dir ~/source/orch/plugin --settings ~/source/orch/plugin/worker-settings.json --name <project>-<issue> "<message>" 2>&1 | tail -1`,
-  then `orchctl row <issue> reopened "<why>"`.
-- After spawning or reopening: `bash ~/source/orch/plugin/scripts/orch-pane.sh <project>-<issue>`.
+  `orchctl reopen <issue> "<message>"`, then `orchctl row <issue> reopened "<why>"`.
+- A worker's pane got closed: `orchctl pane <issue>`.
 
 ## Messages
 A message that breaks the format goes straight back as `FORMAT: <rule>`.
@@ -123,7 +123,7 @@ early: `orchctl pause <holder>` + `PAUSE <holder>: handover` → it sends `READY
 Only on **the user's confirmation** ("close it"):
 1. Nothing pending: no open Qn, no commit-go unused, its READY committed (`orchctl full`).
 2. `orchctl row <issue> done "<≤8 words>"` (releases its claims).
-3. `bash ~/source/orch/plugin/scripts/orch-close.sh <project>-<issue>` — stops the session
+3. `orchctl close <issue>` — stops the session
    and its pane; the transcript stays for a reopen. Never delete sessions.
 
 ## If the user deep-dives

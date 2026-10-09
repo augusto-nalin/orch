@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"orch/internal/broker"
@@ -26,6 +27,9 @@ worker:
   wait [--timeout 30m] <issue> go|commit   block until granted / commit token
 orch:
   full                         startup view
+  spawn <issue> <prompt>       start the worker in the background + show its pane
+  reopen <issue> <message>     reopen a stopped worker + show its pane
+  pane <issue> | close <issue> show a worker's pane / stop it and close the pane
   row <issue> <status> [outcome]
   q <issue> <gist>             → Qn
   a <Qn> [note]
@@ -36,11 +40,17 @@ orch:
 hooks:
   hook user-prompt|pre-tool|post-tool   hook JSON on stdin
 setup:
-  dir | name                   state dir / project name
+  version                      release version, or dev
+  dir | name | root            state dir / project name / plugin dir
+  flags orch|worker            claude flags for that session (shell-quoted)
   import [--force]             board.md + questions.md → state.json
 `
 
+// version is set by `make release`.
+var version = "dev"
+
 func main() {
+	devExec()
 	out, code := run(os.Args[1:], os.Stdout)
 	if out != "" {
 		fmt.Println(out)
@@ -77,12 +87,40 @@ func run(args []string, stdout io.Writer) (string, int) {
 	}
 
 	switch cmd {
+	case "version":
+		return version, 0
 	case "dir":
 		return p.StateDir, 0
 	case "name":
 		return p.Name, 0
 	case "full":
 		return res(b.Full(p.Root))
+	case "root":
+		return res(pluginRoot())
+	case "flags":
+		if !need(1) {
+			return "", 2
+		}
+		root, err := pluginRoot()
+		if err != nil {
+			return res("", err)
+		}
+		flags, err := claudeFlags(root, args[0])
+		return res(shellQuote(flags), err)
+	case "spawn", "reopen":
+		if !need(2) {
+			return "", 2
+		}
+		return res(launch(p, cmd, args[0], strings.Join(args[1:], " ")))
+	case "pane", "close":
+		if !need(1) {
+			return "", 2
+		}
+		root, err := pluginRoot()
+		if err != nil {
+			return res("", err)
+		}
+		return res(script(root, "orch-"+cmd+".sh", p.Name+"-"+args[0]))
 	case "row":
 		if !need(2) {
 			return "", 2
@@ -175,6 +213,22 @@ func run(args []string, stdout io.Writer) (string, int) {
 	}
 	fmt.Fprint(os.Stderr, usage)
 	return "", 2
+}
+
+// devExec: in a clone, `make build` writes bin/orchctl-dev next to the committed
+// release binary, which hands over to it so hooks run the code being worked on.
+func devExec() {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	if exe, err = filepath.EvalSymlinks(exe); err != nil || filepath.Base(exe) != "orchctl" {
+		return
+	}
+	dev := filepath.Join(filepath.Dir(exe), "orchctl-dev")
+	if _, err := os.Stat(dev); err == nil {
+		syscall.Exec(dev, append([]string{dev}, os.Args[1:]...), os.Environ())
+	}
 }
 
 // normalize turns file args into paths relative to their checkout top, so claims
