@@ -1,6 +1,6 @@
 {
   "name": "orch",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Orchestrator + workers: a thin router session delegates each issue to a long-lived background worker; a Go broker and hooks handle claims, turns and commits.",
   "author": {
     "name": "Augusto Nalin"
