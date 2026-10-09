@@ -33,6 +33,7 @@ orch:
   row <issue> <status> [outcome]
   q <issue> <gist>             → Qn
   a <Qn> [note]
+  checked <issue>              the user passed (or skipped) the worker's CHECK
   order <item> <issue>…        turn order for a contested item
   commit-go <issue> [n]
   pause <issue> | resume <issue>
@@ -191,6 +192,11 @@ func run(args []string, stdout io.Writer) (string, int) {
 			return "", 2
 		}
 		return res(b.A(args[0], strings.Join(args[1:], " ")))
+	case "checked":
+		if !need(1) {
+			return "", 2
+		}
+		return res(b.Checked(args[0]))
 	case "log":
 		if !need(1) {
 			return "", 2

@@ -401,6 +401,9 @@ func (b *Broker) Row(issue, status, outcome string) (string, error) {
 			delete(s.Spoke, issue)
 			delete(s.Unreported, issue)
 		}
+		if status == "done" || status == "dropped" || status == "reopened" {
+			delete(s.Checks, issue)
+		}
 		return nil
 	})
 	return out, err
@@ -443,6 +446,39 @@ func (b *Broker) A(qid, note string) (string, error) {
 		}
 		return nil
 	})
+}
+
+// CheckOpen records that issue's worker sent the user a CHECK; until the orch
+// marks it passed, the worker can't send READY … done.
+func (b *Broker) CheckOpen(issue string) error {
+	return b.St.Update(func(s *state.State, log logf) error {
+		s.Checks[issue] = "open"
+		log("%s check sent", issue)
+		return nil
+	})
+}
+
+// Checked marks issue's open CHECK passed: the user tried it and it works, or
+// said to go on without trying.
+func (b *Broker) Checked(issue string) (string, error) {
+	return "ok", b.St.Update(func(s *state.State, log logf) error {
+		if s.Checks[issue] != "open" {
+			return fmt.Errorf("no open check for %s", issue)
+		}
+		s.Checks[issue] = "passed"
+		log("%s check passed", issue)
+		return nil
+	})
+}
+
+// CheckState is issue's check: "", "open" or "passed".
+func (b *Broker) CheckState(issue string) (string, error) {
+	var c string
+	err := b.St.View(func(s *state.State) error {
+		c = s.Checks[issue]
+		return nil
+	})
+	return c, err
 }
 
 func (b *Broker) Log(text string) (string, error) { return "ok", b.St.Log(text) }
@@ -595,6 +631,7 @@ func (b *Broker) Committed(issue, head string) (string, error) {
 		// The orch only hears of it from the worker (COMMITTED); the Stop guard holds it to that.
 		delete(s.Spoke, issue)
 		s.Unreported[issue] = sha
+		delete(s.Checks, issue) // the next task needs its own CHECK
 		out = sha
 		return nil
 	})

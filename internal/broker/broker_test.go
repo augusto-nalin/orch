@@ -289,3 +289,28 @@ func TestFull(t *testing.T) {
 		t.Errorf("done row shown")
 	}
 }
+
+func TestChecks(t *testing.T) {
+	b := newBroker(t)
+	if _, err := b.Checked("a"); err == nil {
+		t.Fatal("checked with no CHECK")
+	}
+	b.CheckOpen("a")
+	got, err := b.CheckState("a")
+	must(t, got, err, "open")
+	got, err = b.Checked("a")
+	must(t, got, err, "ok")
+	got, err = b.CheckState("a")
+	must(t, got, err, "passed")
+
+	// A commit ends the task: the next one needs its own CHECK.
+	b.SetHead("a", "aaaaaaa")
+	b.Committed("a", "bbbbbbb")
+	got, err = b.CheckState("a")
+	must(t, got, err, "")
+
+	b.CheckOpen("a")
+	b.Row("a", "reopened", "more")
+	got, err = b.CheckState("a")
+	must(t, got, err, "")
+}

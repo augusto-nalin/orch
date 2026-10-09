@@ -65,6 +65,7 @@ type State struct {
 	Stalled    map[string]string   `json:"stalled,omitempty"`    // issue → why its last turn died (API error), until it runs again
 	Spoke      map[string]bool     `json:"spoke,omitempty"`      // issue → messaged the orch or started a wait this turn
 	Unreported map[string]string   `json:"unreported,omitempty"` // issue → sha of a commit it hasn't told the orch about yet
+	Checks     map[string]string   `json:"checks,omitempty"`     // issue → "open" (CHECK sent to the user) or "passed" (the orch ran `orchctl checked`)
 }
 
 func New() *State {
@@ -101,6 +102,9 @@ func (s *State) init() {
 	}
 	if s.Unreported == nil {
 		s.Unreported = map[string]string{}
+	}
+	if s.Checks == nil {
+		s.Checks = map[string]string{}
 	}
 	if s.NextQ < 1 {
 		s.NextQ = 1

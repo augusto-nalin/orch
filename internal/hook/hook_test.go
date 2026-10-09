@@ -422,3 +422,36 @@ func TestPermissionNotify(t *testing.T) {
 		t.Fatalf("notified %q", f.notified)
 	}
 }
+
+func TestChecksGateReadyDone(t *testing.T) {
+	f := newFixture(t)
+	f.prompt("w1", "/worker feat-a")
+	f.prompt("o1", "/orch:orch")
+	send := func(msg string) string {
+		t.Helper()
+		d, _ := decision(t, f.run("pre-tool", "w1", tool("SendMessage", map[string]any{"to": "demo-orch", "message": msg})))
+		return d
+	}
+
+	for msg, want := range map[string]string{
+		"READY feat-a: x | handover | open: none":              "allow",
+		"READY feat-a: x | done | open: none":                  "deny",
+		"READY feat-a: x | done | checks: passed | open: none": "deny",
+		"READY feat-a: x | done | checks: none | open: none":   "allow",
+	} {
+		if got := send(msg); got != want {
+			t.Fatalf("%q: %q, want %q", msg, got, want)
+		}
+	}
+
+	if got := send("CHECK feat-a: relaunch the game\n1) open the tree → it shows"); got != "allow" {
+		t.Fatalf("CHECK: %q", got)
+	}
+	if got := send("READY feat-a: x | done | checks: none | open: none"); got != "deny" {
+		t.Fatalf("done with an open CHECK: %q", got)
+	}
+	f.b.Checked("feat-a")
+	if got := send("READY feat-a: x | done | checks: passed | open: none"); got != "allow" {
+		t.Fatalf("done after the check passed: %q", got)
+	}
+}

@@ -53,17 +53,32 @@ Send the `Q`, **end your turn and wait**. Answers come as `A <Qn>: "<verbatim>"`
 record them verbatim in Decisions, then act. If the user talks to you directly,
 afterwards: `ANSWERED-DIRECT` or `NOTE`.
 
+## Checks the user tries by hand
+Anything the user must try themselves (in the app, in game, on a device) goes in a
+`CHECK` before `READY … done`, never as a pointer to a file. List each check as a
+step and the result to expect, so the user can answer per check: works, something's
+off, or not tried yet. Record the answer in Decisions. Something's off → fix it, send
+a new `CHECK`. All works (or the user says go on without it) → the orch marks it
+passed, then `READY … | done | checks: passed`. Nothing to try by hand → `checks: none`.
+The hook refuses `READY … done` while a `CHECK` is open or without the field.
+
 ## Messages
-One line, ultra, ≤300 chars — except `Q`.
+One line, ultra, ≤300 chars — except `Q` and `CHECK`.
 ```
 Q <issue>: <question in plain English, ≤2 sentences>
-A) <label> — <trade-off>   ← your pick first
-B) <label> — <trade-off>
+- <answer, as the user would say it> — <trade-off>   ← your pick first
+- <answer> — <trade-off>
 ref: issues/<issue>.md#<section>     ← optional
+```
+Options are the answers themselves — no `A)`/`B)` letters or labels; the dialog numbers them.
+```
+CHECK <issue>: <what to do first, e.g. relaunch the app — plain English>
+1) <step> → <what the user should see>
+2) …   ← 1–4 checks; more → several CHECKs
 ```
 ```
 DECIDED <issue>: <decision> — <why>
-READY <issue>: <outcome ≤2 lines> | done|handover | open: <Qn… or none>
+READY <issue>: <outcome ≤2 lines> | done|handover | checks: passed|none | open: <Qn… or none>
 COMMITTED <issue>: <sha>
 HELD <issue>: <item> by <other>
 CONFLICT <issue>: <file> — <what happened>

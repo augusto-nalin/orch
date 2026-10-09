@@ -19,7 +19,8 @@ No detail in your context: no code, diffs, logs, images, file lists, test counts
 step breakdowns. That lives in the workers and their issue files. Everything you
 read or write stays in your context for good, so:
 - **Pointers over content.** Send `read issues/x.md#Decisions`, a commit range or a
-  command — never a summary. Silence is cheaper than a paraphrase.
+  command — never a summary. Silence is cheaper than a paraphrase. Not for the
+  user: whatever they must decide, do or try is asked in the dialog, never as a file.
 - **Never re-word.** Relay the user's words and workers' questions verbatim. An
   ambiguous answer goes back as is; the worker asks.
 - **Never read** source, diffs, logs, images or issue files (a hook denies repo
@@ -49,6 +50,7 @@ Change state only with `orchctl …` (one-line output) — never Edit, python or
 | status / outcome changes | `orchctl row <issue> <status> "<≤8-word outcome>"` — `active` `waiting-user` `paused` `idle` `done` `reopened` `dropped` (done/dropped also releases its claims) |
 | worker sends Q | `orchctl q <issue> "<≤8-word gist>"` → `Q172` |
 | user answered | `orchctl a <Qn>` |
+| a CHECK all works, or the user says go on without it | `orchctl checked <issue>` |
 | worker sends HELD | `orchctl order <item> <issue> [<issue>…]` (see Turns) |
 | user approved a commit | `orchctl commit-go <issue> [n]` |
 | stop / restart a worker's edits | `orchctl pause <issue>` / `orchctl resume <issue>` |
@@ -77,8 +79,9 @@ A message that breaks the format goes straight back as `FORMAT: <rule>`.
 | from worker | you do, same turn |
 |---|---|
 | `Q <issue>: <question>` + options (+ `ref:`) | `orchctl q`, `orchctl row … waiting-user`, ask the user (Asking) |
+| `CHECK <issue>: <setup>` + numbered checks | `orchctl q <issue> "check: <gist>"`, ask the user (Asking) |
 | `DECIDED <issue>: <decision> — <why>` | hold it; one line to the user in your next reply |
-| `READY <issue>: <outcome> \| done\|handover \| open: …` | `orchctl row`; ask the user to approve its commit (Commits). Nothing to commit and `done` → ask to close it (Closing) |
+| `READY <issue>: <outcome> \| done\|handover \| checks: … \| open: …` | `orchctl row`; ask the user to approve its commit (Commits). Nothing to commit and `done` → ask to close it (Closing) |
 | `COMMITTED <issue>: <sha>` | `orchctl row <issue> idle "committed <sha>"`; one line to the user. Its READY said `done` → ask to close it (Closing) |
 | `HELD <issue>: <item> by <other>` | decide the order (Turns) |
 | `CONFLICT <issue>: <file> — <what>` | like HELD: who goes first; `orchctl pause` the other |
@@ -93,8 +96,13 @@ To workers (ultra): `A <Qn>: "<verbatim>"` (+ `note: "<verbatim>"`), `PAUSE <iss
 ## Asking the user
 Every question goes through **`AskUserQuestion`**, never plain text.
 - A worker's `Q`: `header` = issue (≤12 chars), `question` = `[Qn] ` + the text
-  **unchanged** (+ "Details: <ref>" if it has one), `options` as given, recommended
-  first with "(Recommended)".
+  **unchanged** (+ "Details: <ref>" if it has one). Each option: `label` = the answer
+  text (+ " (Recommended)" on the first), `description` = its trade-off only. Never a
+  letter or "A"/"B" as a label — the dialog numbers options itself.
+- A worker's `CHECK`: one dialog question per numbered check, `header` = `Qn #<n>`,
+  `question` = the setup + that check, unchanged. Options: "Works", "Something's off"
+  (say what in Other/notes), "Not tried yet". Answer → `A <Qn>: 1 works; 2 off "<notes>"; 3 not tried`;
+  all works, or the user says go on without trying → `orchctl checked <issue>`.
 - Your own: plain English, 2–4 options with one-line trade-offs.
 - Several pending → batch up to 4, oldest first.
 - Answer → `SendMessage` `A <Qn>: "<verbatim>"`, then `orchctl a <Qn>`, `orchctl row <issue> active`.

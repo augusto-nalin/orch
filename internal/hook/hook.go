@@ -291,6 +291,9 @@ func (h *handler) preTool() (any, error) {
 	case "SendMessage":
 		// By name, or a reply to the from= socket address (the orch is who messages workers).
 		if to := h.str("to"); strings.HasPrefix(to, h.p.Name+"-orch") || strings.HasPrefix(to, "uds:") {
+			if out, err := h.toOrch(h.str("message")); out != nil || err != nil {
+				return out, err
+			}
 			return nil, h.b.Spoke(h.sess.Issue)
 		}
 		return nil, nil
@@ -302,6 +305,50 @@ func (h *handler) preTool() (any, error) {
 		return h.checkEdit(path, "")
 	case "Bash":
 		return h.workerBash()
+	}
+	return nil, nil
+}
+
+// toOrch gates a worker's message to the orch on the user's hands-on checks: a
+// CHECK opens one, and READY … done needs `checks: passed` (the orch ran
+// `orchctl checked`) or `checks: none`, never with a CHECK still open.
+func (h *handler) toOrch(msg string) (any, error) {
+	line, _, _ := strings.Cut(strings.TrimSpace(msg), "\n")
+	kind, _, _ := strings.Cut(line, " ")
+	issue := h.sess.Issue
+	switch kind {
+	case "CHECK":
+		return nil, h.b.CheckOpen(issue)
+	case "READY":
+	default:
+		return nil, nil
+	}
+	done, checks := false, ""
+	for _, f := range strings.Split(line, "|") {
+		f = strings.TrimSpace(f)
+		if f == "done" {
+			done = true
+		}
+		if v, ok := strings.CutPrefix(f, "checks:"); ok {
+			checks = strings.TrimSpace(v)
+		}
+	}
+	if !done {
+		return nil, nil
+	}
+	state, err := h.b.CheckState(issue)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case state == "open":
+		return deny("your CHECK is still open: wait for the user's answer (A <Qn>). Something failed → fix it and send a new CHECK. " +
+			"READY … done only after the orch marks the check passed"), nil
+	case checks == "passed" && state != "passed":
+		return deny("no passed CHECK on record: send CHECK with what the user should try, and wait for the answer"), nil
+	case checks != "passed" && checks != "none":
+		return deny("READY … done needs a checks field: `| checks: passed` (the user confirmed your CHECK) or " +
+			"`| checks: none` (nothing for the user to try by hand)"), nil
 	}
 	return nil, nil
 }
