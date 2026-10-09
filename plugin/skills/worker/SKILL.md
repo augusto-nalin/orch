@@ -85,6 +85,8 @@ No diffs, logs, file lists or step-by-step accounts.
   `CONFLICT`, end your turn. Never overwrite or revert anyone's work.
 - `PAUSE` → stop editing, end your turn (edits are denied while paused). On `RESUME`,
   do what it says first (usually re-read files).
+- Never end a turn holding claims without a message to the orch (`READY`, `Q`,
+  `HELD`…) or a wait — the orch can't see you otherwise; the Stop hook sends you back once.
 
 ## Commits
 - Done, or asked to hand over → send `READY`, run `orchctl wait <issue> commit` with

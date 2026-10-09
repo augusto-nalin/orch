@@ -397,6 +397,8 @@ func (b *Broker) Row(issue, status, outcome string) (string, error) {
 			out = release(s, today, issue, nil, log)
 			delete(s.Tokens, issue)
 			delete(s.Paused, issue)
+			delete(s.Stalled, issue)
+			delete(s.Spoke, issue)
 		}
 		return nil
 	})
@@ -500,6 +502,9 @@ func (b *Broker) Full(root string) (string, error) {
 		for _, i := range sortedKeys(s.Paused) {
 			flags = append(flags, i+" paused")
 		}
+		for _, i := range sortedKeys(s.Stalled) {
+			flags = append(flags, fmt.Sprintf("%s stalled: %s", i, s.Stalled[i]))
+		}
 		for _, i := range sortedKeys(s.Tokens) {
 			flags = append(flags, fmt.Sprintf("%s commit-go ×%d", i, s.Tokens[i]))
 		}
@@ -584,6 +589,71 @@ func (b *Broker) Committed(issue, head string) (string, error) {
 		log("%s commit %s", issue, sha)
 		release(s, b.St.Today(), issue, nil, log)
 		out = sha
+		return nil
+	})
+	return out, err
+}
+
+// ---- turn ends (hooks) ----
+
+// Spoke marks that issue's worker messaged the orch or started a wait this turn.
+func (b *Broker) Spoke(issue string) error {
+	return b.St.Update(func(s *state.State, log logf) error {
+		s.Spoke[issue] = true
+		return nil
+	})
+}
+
+// TurnEnd runs when issue's worker ends a turn: it clears the turn's Spoke mark
+// and reports whether the worker ends it silent — holding claims, not paused, and
+// without having messaged the orch or started a wait.
+func (b *Broker) TurnEnd(issue string) (silent bool, err error) {
+	err = b.St.Update(func(s *state.State, log logf) error {
+		spoke := s.Spoke[issue]
+		delete(s.Spoke, issue)
+		held := slices.ContainsFunc(s.Claims, func(c state.Claim) bool { return c.Issue == issue })
+		silent = held && !spoke && !s.Paused[issue]
+		return nil
+	})
+	return silent, err
+}
+
+// Stall records that issue's turn was ended by an API error.
+func (b *Broker) Stall(issue, why string) error {
+	return b.St.Update(func(s *state.State, log logf) error {
+		delete(s.Spoke, issue)
+		s.Stalled[issue] = b.St.Today() + " " + why
+		log("%s stalled: %s", issue, why)
+		return nil
+	})
+}
+
+// Unstall clears issue's stall mark once it runs again.
+func (b *Broker) Unstall(issue string) error {
+	var stalled bool
+	if err := b.St.View(func(s *state.State) error {
+		_, stalled = s.Stalled[issue]
+		return nil
+	}); err != nil || !stalled {
+		return err
+	}
+	return b.St.Update(func(s *state.State, log logf) error {
+		if _, ok := s.Stalled[issue]; !ok {
+			return nil
+		}
+		delete(s.Stalled, issue)
+		log("%s running again", issue)
+		return nil
+	})
+}
+
+// StalledList is the stalled issues with their reasons, sorted.
+func (b *Broker) StalledList() ([]string, error) {
+	var out []string
+	err := b.St.View(func(s *state.State) error {
+		for _, i := range sortedKeys(s.Stalled) {
+			out = append(out, i+" ("+s.Stalled[i]+")")
+		}
 		return nil
 	})
 	return out, err

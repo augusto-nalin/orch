@@ -62,6 +62,8 @@ type State struct {
 	NextQ     int                 `json:"next_q"`
 	Sessions  map[string]Session  `json:"sessions,omitempty"` // session_id → role
 	Heads     map[string]string   `json:"heads,omitempty"`    // issue → HEAD before its pending git commit
+	Stalled   map[string]string   `json:"stalled,omitempty"`  // issue → why its last turn died (API error), until it runs again
+	Spoke     map[string]bool     `json:"spoke,omitempty"`    // issue → messaged the orch or started a wait this turn
 }
 
 func New() *State {
@@ -89,6 +91,12 @@ func (s *State) init() {
 	}
 	if s.Heads == nil {
 		s.Heads = map[string]string{}
+	}
+	if s.Stalled == nil {
+		s.Stalled = map[string]string{}
+	}
+	if s.Spoke == nil {
+		s.Spoke = map[string]bool{}
 	}
 	if s.NextQ < 1 {
 		s.NextQ = 1

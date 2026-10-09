@@ -35,6 +35,10 @@ read or write stays in your context for good, so:
 On start:
 1. Session not named `<project>-orch` → tell the user to type `/rename <project>-orch`.
 2. `ListAgents`, reconcile with the board: which workers are live, which stopped.
+
+A `orch: stalled workers …` note on a prompt: an API error ended that worker's turn
+mid-work and it sent nothing. `SendMessage` it "continue where you stopped" (the note
+goes once it runs again) and tell the user in one line.
 3. Short status to the user: open questions first, then active issues.
 
 ## State — the `orchctl` CLI only

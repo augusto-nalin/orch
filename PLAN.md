@@ -100,7 +100,8 @@ Orch:
 | `orchctl pause <issue>` / `orchctl resume <issue>` | sets a flag that the hooks enforce (edits denied while paused) |
 | `orchctl log "<text>"` | rarely needed; the other commands log themselves |
 
-Hooks only: `orchctl hook user-prompt`, `orchctl hook pre-tool`, `orchctl hook post-tool`.
+Hooks only: `orchctl hook user-prompt`, `orchctl hook pre-tool`, `orchctl hook post-tool`,
+`orchctl hook stop`, `orchctl hook stop-failure`.
 
 ### Hooks (`plugin/hooks/hooks.json`)
 Hooks are active only in sessions launched with the plugin, so the user's normal
@@ -134,6 +135,16 @@ sessions are unaffected.
 6. **Known gap:** edits made through Bash (`sed -i`, `>`) bypass the claim gate. The
    worker skill forbids them; optionally the Bash hook denies obvious `sed -i` / `>`
    on unclaimed repo paths. Best effort.
+7. **Silent workers.** v2 moved CLAIM/NEED/GO off messages, so a worker that stops
+   mid-work is invisible to the orch.
+   - PreToolUse `SendMessage` to `<project>-orch`, or a Bash `orchctl wait`, marks the
+     worker as having spoken this turn.
+   - **Stop (workers):** holding claims, not paused, and silent this turn → `decision:
+     block` once (`stop_hook_active` lets the second stop through).
+   - **StopFailure** (an API error ended the turn; no Stop runs, output ignored): mark
+     the worker stalled, log it, macOS notification. The orch's UserPromptSubmit
+     (cross-session messages included) adds a "stalled workers" note until that
+     worker's next prompt clears it; the orch nudges it.
 
 The hooks must exit fast (Go binary, no network) and fail **open** on internal errors
 (log to `~/.local/state/orch/<project>/hook-errors.log`), so a broker bug never blocks work.

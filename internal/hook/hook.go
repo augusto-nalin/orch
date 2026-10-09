@@ -30,6 +30,9 @@ type Input struct {
 	Prompt    string         `json:"prompt"`
 	ToolName  string         `json:"tool_name"`
 	ToolInput map[string]any `json:"tool_input"`
+	// Stop / StopFailure
+	StopHookActive bool   `json:"stop_hook_active"`
+	Error          string `json:"error"`
 }
 
 // Agent is one row of `claude agents --json`.
@@ -113,11 +116,15 @@ func Run(event string, stdin io.Reader, stdout io.Writer, env Env) int {
 	var err error
 	switch event {
 	case "user-prompt":
-		err = h.userPrompt()
+		out, err = h.userPrompt()
 	case "pre-tool":
 		out, err = h.preTool()
 	case "post-tool":
 		out, err = h.postTool()
+	case "stop":
+		out, err = h.stop()
+	case "stop-failure":
+		err = h.stopFailure()
 	default:
 		err = fmt.Errorf("unknown event %q", event)
 	}
@@ -154,18 +161,38 @@ var (
 	workerRe = regexp.MustCompile(`^\s*/(?:orch:)?worker\s+([A-Za-z0-9_.-]+)`)
 )
 
-func (h *handler) userPrompt() error {
+// userPrompt registers /orch and /worker sessions. Any other prompt (cross-session
+// messages too) clears a worker's stall mark, and reminds the orch of stalled workers.
+func (h *handler) userPrompt() (any, error) {
 	if h.in.SessionID == "" {
-		return nil
+		return nil, nil
 	}
 	if orchRe.MatchString(h.in.Prompt) {
-		return h.b.Register(h.in.SessionID, state.Session{Role: "orch", Name: h.p.Name + "-orch"})
+		return nil, h.b.Register(h.in.SessionID, state.Session{Role: "orch", Name: h.p.Name + "-orch"})
 	}
 	if m := workerRe.FindStringSubmatch(h.in.Prompt); m != nil {
 		issue := strings.TrimRight(m[1], ".")
-		return h.b.Register(h.in.SessionID, state.Session{Role: "worker", Issue: issue, Name: h.p.Name + "-" + issue})
+		if err := h.b.Register(h.in.SessionID, state.Session{Role: "worker", Issue: issue, Name: h.p.Name + "-" + issue}); err != nil {
+			return nil, err
+		}
+		return nil, h.b.Unstall(issue)
 	}
-	return nil
+	ok, err := h.role()
+	if err != nil || !ok {
+		return nil, err
+	}
+	if h.sess.Role == "worker" {
+		return nil, h.b.Unstall(h.sess.Issue)
+	}
+	stalled, err := h.b.StalledList()
+	if err != nil || len(stalled) == 0 {
+		return nil, err
+	}
+	o := &postOut{}
+	o.HookSpecificOutput.HookEventName = "UserPromptSubmit"
+	o.HookSpecificOutput.AdditionalContext = "orch: stalled workers — an API error ended their turn, they sent nothing: " +
+		strings.Join(stalled, "; ") + ". SendMessage each: \"continue where you stopped\"."
+	return o, nil
 }
 
 // role finds this session's role; unknown sessions are looked up by name in
@@ -257,6 +284,11 @@ func (h *handler) preTool() (any, error) {
 		return h.orchPre()
 	}
 	switch h.in.ToolName {
+	case "SendMessage":
+		if strings.HasPrefix(h.str("to"), h.p.Name+"-orch") {
+			return nil, h.b.Spoke(h.sess.Issue)
+		}
+		return nil, nil
 	case "Edit", "Write", "MultiEdit", "NotebookEdit":
 		path := h.str("file_path")
 		if path == "" {
@@ -336,6 +368,12 @@ func (h *handler) workerBash() (any, error) {
 		if len(seg.args) >= 1 && seg.args[0] == "cd" {
 			if len(seg.args) > 1 {
 				dir = h.abs(dir, seg.args[1])
+			}
+			continue
+		}
+		if len(seg.args) >= 2 && filepath.Base(seg.args[0]) == "orchctl" && seg.args[1] == "wait" {
+			if err := h.b.Spoke(issue); err != nil {
+				return nil, err
 			}
 			continue
 		}
@@ -432,4 +470,50 @@ func (h *handler) postTool() (any, error) {
 		return o, nil
 	}
 	return nil, nil
+}
+
+// ---- turn ends ----
+
+type stopOut struct {
+	Decision string `json:"decision"`
+	Reason   string `json:"reason"`
+}
+
+// stop: a worker that ends its turn holding claims without a word to the orch
+// (or a wait) is sent back once — otherwise the orch never hears of it.
+func (h *handler) stop() (any, error) {
+	ok, err := h.role()
+	if err != nil || !ok || h.sess.Role != "worker" {
+		return nil, err
+	}
+	silent, err := h.b.TurnEnd(h.sess.Issue)
+	if err != nil || !silent || h.in.StopHookActive {
+		return nil, err
+	}
+	return &stopOut{Decision: "block", Reason: fmt.Sprintf(
+		"orch: you hold claims and sent the orch nothing this turn, so it won't know. "+
+			"Done → READY + orchctl wait %[1]s commit; need a decision → Q; blocked → HELD + orchctl wait %[1]s go; "+
+			"not finished → keep going. If you were only talking with the user directly, end your turn again.", h.sess.Issue)}, nil
+}
+
+// stopFailure: an API error ended the turn (no Stop hook runs). Mark the worker
+// stalled for the orch and tell the user.
+func (h *handler) stopFailure() error {
+	ok, err := h.role()
+	if err != nil || !ok {
+		return err
+	}
+	why := h.in.Error
+	if why == "" {
+		why = "API error"
+	}
+	if h.sess.Role == "worker" {
+		if err := h.b.Stall(h.sess.Issue, why); err != nil {
+			return err
+		}
+	}
+	if h.env.Notify != nil {
+		h.env.Notify("orch", h.sess.Name+" stopped: "+why)
+	}
+	return nil
 }

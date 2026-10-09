@@ -291,7 +291,7 @@ func TestPromptRegistry(t *testing.T) {
 		f.prompt("s", c.prompt)
 		sess, ok, _ := f.b.Lookup("s")
 		if c.role == "" {
-			if ok {
+			if ok && sess.Role != "none" { // plain prompts look the role up, "none" is cached
 				t.Errorf("%q registered %+v", c.prompt, sess)
 			}
 			continue
@@ -301,4 +301,86 @@ func TestPromptRegistry(t *testing.T) {
 		}
 		f.b.St.Update(func(s *state.State, _ func(string, ...any)) error { delete(s.Sessions, "s"); return nil })
 	}
+}
+
+func (f *fixture) stop(session string, active bool) string {
+	f.t.Helper()
+	out := f.run("stop", session, map[string]any{"hook_event_name": "Stop", "stop_hook_active": active})
+	if out == "" {
+		return "allow"
+	}
+	var o stopOut
+	if err := json.Unmarshal([]byte(out), &o); err != nil {
+		f.t.Fatalf("bad output %q: %v", out, err)
+	}
+	return o.Decision
+}
+
+func TestSilentStop(t *testing.T) {
+	f := newFixture(t)
+	f.prompt("w1", "/worker feat-a")
+	f.prompt("o1", "/orch:orch")
+
+	if got := f.stop("w1", false); got != "allow" {
+		t.Fatalf("no claims: %s", got)
+	}
+	f.b.Claim("feat-a", "file", []string{"src/a.go"})
+	if got := f.stop("w1", false); got != "block" {
+		t.Fatalf("silent with claims: %s", got)
+	}
+	if got := f.stop("w1", true); got != "allow" {
+		t.Fatalf("second stop: %s", got)
+	}
+
+	// Messaging the orch, or a wait, counts for that turn only.
+	f.run("pre-tool", "w1", tool("SendMessage", map[string]any{"to": "demo-orch", "message": "READY feat-a: x"}))
+	if got := f.stop("w1", false); got != "allow" {
+		t.Fatalf("after READY: %s", got)
+	}
+	if got := f.stop("w1", false); got != "block" {
+		t.Fatalf("next silent turn: %s", got)
+	}
+	f.run("pre-tool", "w1", tool("Bash", map[string]any{"command": "cd " + f.repo + " && orchctl wait feat-a go"}))
+	if got := f.stop("w1", false); got != "allow" {
+		t.Fatalf("after wait: %s", got)
+	}
+	f.run("pre-tool", "w1", tool("SendMessage", map[string]any{"to": "demo-other", "message": "hi"}))
+	if got := f.stop("w1", false); got != "block" {
+		t.Fatalf("message to a non-orch: %s", got)
+	}
+
+	f.b.SetPaused("feat-a", true)
+	if got := f.stop("w1", false); got != "allow" {
+		t.Fatalf("paused: %s", got)
+	}
+	if got := f.stop("o1", false); got != "allow" {
+		t.Fatalf("orch: %s", got)
+	}
+}
+
+func TestStopFailure(t *testing.T) {
+	f := newFixture(t)
+	f.prompt("w1", "/worker feat-a")
+	f.prompt("o1", "/orch:orch")
+
+	if out := f.run("stop-failure", "w1", map[string]any{"hook_event_name": "StopFailure", "error": "connection lost"}); out != "" {
+		t.Fatalf("output %q", out)
+	}
+	if len(f.notified) != 1 || !strings.Contains(f.notified[0], "demo-feat-a stopped: connection lost") {
+		t.Fatalf("notified %q", f.notified)
+	}
+	full, _ := f.b.Full(f.repo)
+	if !strings.Contains(full, "feat-a stalled: 2026-10-07 connection lost") {
+		t.Fatalf("full:\n%s", full)
+	}
+
+	// The orch hears of it with every prompt (messages too) until the worker runs again.
+	out := f.run("user-prompt", "o1", map[string]any{"hook_event_name": "UserPromptSubmit", "prompt": "status?"})
+	var o postOut
+	json.Unmarshal([]byte(out), &o)
+	if o.HookSpecificOutput.HookEventName != "UserPromptSubmit" || !strings.Contains(o.HookSpecificOutput.AdditionalContext, "feat-a (2026-10-07 connection lost)") {
+		t.Fatalf("orch prompt output %q", out)
+	}
+	f.prompt("w1", "continue where you stopped")
+	f.prompt("o1", "status?")
 }

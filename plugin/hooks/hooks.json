@@ -1,12 +1,12 @@
 {
-  "description": "orch broker: session registry, claim/commit gates, commit bookkeeping",
+  "description": "orch broker: session registry, claim/commit gates, commit bookkeeping, silent/stalled workers",
   "hooks": {
     "UserPromptSubmit": [
       { "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/orchctl\" hook user-prompt", "timeout": 10 }] }
     ],
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|Read",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|Read|SendMessage",
         "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/orchctl\" hook pre-tool", "timeout": 10 }]
       }
     ],
@@ -15,6 +15,12 @@
         "matcher": "Bash",
         "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/orchctl\" hook post-tool", "timeout": 10 }]
       }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/orchctl\" hook stop", "timeout": 10 }] }
+    ],
+    "StopFailure": [
+      { "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/orchctl\" hook stop-failure", "timeout": 10 }] }
     ]
   }
 }
