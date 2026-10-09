@@ -74,7 +74,7 @@ func RenderQuestions(s *State) string {
 	return b.String()
 }
 
-// Line is the questions.md line (same format as orch-state.sh).
+// Line is the questions.md line.
 func (q Question) Line() string {
 	if q.Raw != "" {
 		return q.Raw

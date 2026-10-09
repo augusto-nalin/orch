@@ -1,5 +1,5 @@
 // Command orchctl is the broker for the /orch and /worker skills: one-line commands
-// over the project's state (see PLAN.md). The project is resolved from the cwd.
+// over the project's state. The project is resolved from the cwd.
 package main
 
 import (
@@ -45,7 +45,6 @@ setup:
   dir | name | root            state dir / project name / plugin dir
   update-check                 say if a newer release exists (asks GitHub at most daily)
   flags orch|worker            claude flags for that session (shell-quoted)
-  import [--force]             board.md + questions.md → state.json
 `
 
 // version is set by `make release`.
@@ -210,12 +209,6 @@ func run(args []string, stdout io.Writer) (string, int) {
 			return "", 2
 		}
 		return res(b.Log(strings.Join(args, " ")))
-	case "import":
-		s, err := st.Import(len(args) > 0 && args[0] == "--force")
-		if err != nil {
-			return res("", err)
-		}
-		return fmt.Sprintf("imported %d rows, %d claims, %d questions", len(s.Rows), len(s.Claims), len(s.Questions)), 0
 	case "hook":
 		if !need(1) {
 			return "", 2

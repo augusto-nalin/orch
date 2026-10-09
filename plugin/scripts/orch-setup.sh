@@ -6,8 +6,6 @@
 #   - links orch and orchctl into ~/.local/bin (an installed plugin gets small
 #     wrappers instead, since its versioned path changes on every update)
 #   - checks PATH, a shadowing `orch` alias, iTerm2 (macOS, for worker panes), jq, claude
-#   - moves a legacy ~/.claude/orch to the state home (symlink left behind)
-#   - imports the current project's old board.md/questions.md into state.json
 set -u
 plugin=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
 repo=$(dirname "$plugin")
@@ -16,7 +14,6 @@ os=$(uname -s)
 case "$os" in MINGW* | MSYS* | CYGWIN*) windows=1 ext=.exe ;; *) windows="" ext="" ;; esac
 dev="$plugin/bin/orchctl-dev$ext"
 links="$HOME/.local/bin"
-state_home="${ORCH_HOME:-${XDG_STATE_HOME:-$HOME/.local/state}/orch}"
 fail=0
 ok()   { echo "ok    $*"; }
 did()  { echo "done  $*"; }
@@ -99,25 +96,5 @@ command -v jq >/dev/null && ok "jq" || err "jq not found ($jq_hint)"
 if ! command -v claude >/dev/null; then err "claude not found"
 elif claude agents --json >/dev/null 2>&1; then ok "claude $(claude --version 2>/dev/null | cut -d' ' -f1)"
 else err "claude too old — orch needs background sessions (claude agents, --bg); run: claude update"; fi
-
-# Legacy state under ~/.claude (the Bash sandbox can't write there).
-legacy="$HOME/.claude/orch"
-if [ -d "$legacy" ] && [ ! -L "$legacy" ]; then
-  if [ -e "$state_home" ]; then
-    warn "both $legacy and $state_home exist — merge them by hand"
-  else
-    mkdir -p "$(dirname "$state_home")" && mv "$legacy" "$state_home" && ln -s "$state_home" "$legacy" &&
-      did "moved $legacy → $state_home (symlink left)"
-  fi
-fi
-
-# Old markdown state for the current project → state.json.
-if dir=$("$bin" dir 2>/dev/null); then
-  if [ -f "$dir/state.json" ]; then
-    ok "state $dir"
-  elif [ -f "$dir/board.md" ]; then
-    out=$("$bin" import) && did "$out ($dir)" || err "import failed in $dir"
-  fi
-fi
 
 exit $fail
