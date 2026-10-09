@@ -340,6 +340,10 @@ func TestSilentStop(t *testing.T) {
 	if got := f.stop("w1", false); got != "block" {
 		t.Fatalf("next silent turn: %s", got)
 	}
+	f.run("pre-tool", "w1", tool("SendMessage", map[string]any{"to": "uds:/tmp/cc-socks/52001.sock", "message": "Q feat-a: x"}))
+	if got := f.stop("w1", false); got != "allow" {
+		t.Fatalf("reply to the orch's socket address: %s", got)
+	}
 	f.run("pre-tool", "w1", tool("Bash", map[string]any{"command": "cd " + f.repo + " && orchctl wait feat-a go"}))
 	if got := f.stop("w1", false); got != "allow" {
 		t.Fatalf("after wait: %s", got)

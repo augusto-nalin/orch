@@ -285,7 +285,8 @@ func (h *handler) preTool() (any, error) {
 	}
 	switch h.in.ToolName {
 	case "SendMessage":
-		if strings.HasPrefix(h.str("to"), h.p.Name+"-orch") {
+		// By name, or a reply to the from= socket address (the orch is who messages workers).
+		if to := h.str("to"); strings.HasPrefix(to, h.p.Name+"-orch") || strings.HasPrefix(to, "uds:") {
 			return nil, h.b.Spoke(h.sess.Issue)
 		}
 		return nil, nil
