@@ -62,6 +62,7 @@ screen)
   elif [ "${2:-}" = "--resume" ]; then cmd="claude --resume $s --name $s --plugin-dir $plugin --settings $plugin/orch-settings.json"
   else cmd="claude --name $s --plugin-dir $plugin --settings $plugin/orch-settings.json /orch:orch"; fi
   orch=$(split "$here" horizontally "cd '$PWD' && $cmd")
+  mkdir -p "$dir"             # first run in a project: the broker hasn't made it yet
   printf 'agents %s\norch %s\n' "$here" "$orch" > "$screen"
   # Workers that are already running.
   claude agents --json 2>/dev/null | jq -r --arg p "$project-" --arg s "$s" \

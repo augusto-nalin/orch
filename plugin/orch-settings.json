@@ -3,7 +3,16 @@
     "cc-plugin-you-should-know@builtin": true,
     "caveman@caveman": false
   },
-  "sandbox": { "filesystem": { "allowWrite": ["~/.local/state/orch"] } },
+  "sandbox": {
+    "filesystem": { "allowWrite": ["~/.local/state/orch"] },
+    "excludedCommands": [
+      "claude:*",
+      "orchctl:*",
+      "tail:*",
+      "bash ~/source/orch/plugin/scripts/orch-pane.sh:*",
+      "bash ~/source/orch/plugin/scripts/orch-close.sh:*"
+    ]
+  },
   "permissions": {
     "allow": [
       "Bash(orchctl:*)",
