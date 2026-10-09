@@ -49,3 +49,22 @@ func TestSettingsFile(t *testing.T) {
 		t.Errorf("want outside-home error, got %v", err)
 	}
 }
+
+func TestLastSession(t *testing.T) {
+	agents := []byte(`[
+		{"id":"aaa","kind":"background","startedAt":100,"sessionId":"a-1","name":"p-x","state":"done"},
+		{"id":"bbb","kind":"background","startedAt":300,"sessionId":"b-1","name":"p-x","state":"done"},
+		{"id":"ccc","kind":"background","startedAt":200,"sessionId":"c-1","name":"p-x","state":"done"},
+		{"id":"ddd","kind":"background","startedAt":900,"sessionId":"d-1","name":"p-y","state":"done"},
+		{"pid":7,"id":"eee","kind":"background","startedAt":400,"sessionId":"e-1","name":"p-z","state":"blocked"}
+	]`)
+	if id, err := lastSession(agents, "p-x"); err != nil || id != "b-1" {
+		t.Errorf("newest: %s %v", id, err)
+	}
+	if _, err := lastSession(agents, "p-z"); err == nil || !strings.Contains(err.Error(), "running") {
+		t.Errorf("want running error, got %v", err)
+	}
+	if _, err := lastSession(agents, "p-q"); err == nil {
+		t.Error("want error for unknown name")
+	}
+}

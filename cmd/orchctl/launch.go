@@ -4,6 +4,7 @@ package main
 // so a clone anywhere and an installed plugin both work without hardcoded paths.
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -103,7 +104,17 @@ func launch(p project.Project, cmd, issue, text string) (string, error) {
 	name := p.Name + "-" + issue
 	args := []string{"--bg"}
 	if cmd == "reopen" {
-		args = []string{"--resume", name, "--bg"}
+		// By id: --resume <name> --bg starts a copy under a new id, and once two
+		// sessions share the name, the next one stalls in the resume picker.
+		out, err := exec.Command("claude", "agents", "--json", "--all").Output()
+		if err != nil {
+			return "", fmt.Errorf("claude agents: %v", err)
+		}
+		id, err := lastSession(out, name)
+		if err != nil {
+			return "", err
+		}
+		args = []string{"--resume", id, "--bg"}
 	}
 	args = append(append(args, flags...), "--name", name, text)
 	out, err := lastLine("claude", args...)
@@ -120,4 +131,32 @@ func launch(p project.Project, cmd, issue, text string) (string, error) {
 // script runs one of the plugin's scripts.
 func script(root, file string, args ...string) (string, error) {
 	return lastLine("bash", append([]string{filepath.Join(root, "scripts", file)}, args...)...)
+}
+
+// lastSession is the session id of the newest background session called name in
+// `claude agents --json --all` output; an error if none, or if it still runs.
+func lastSession(agents []byte, name string) (string, error) {
+	var list []struct {
+		Kind, Name, SessionID string
+		StartedAt             int64
+		Pid                   *int
+	}
+	if err := json.Unmarshal(agents, &list); err != nil {
+		return "", fmt.Errorf("claude agents: %v", err)
+	}
+	var id string
+	var at int64
+	running := false
+	for _, a := range list {
+		if a.Kind == "background" && a.Name == name && a.StartedAt >= at {
+			id, at, running = a.SessionID, a.StartedAt, a.Pid != nil
+		}
+	}
+	switch {
+	case id == "":
+		return "", fmt.Errorf("no session named %s to reopen", name)
+	case running:
+		return "", fmt.Errorf("%s is still running; message it instead", name)
+	}
+	return id, nil
 }
