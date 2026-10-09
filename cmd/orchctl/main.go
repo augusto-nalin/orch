@@ -38,7 +38,7 @@ orch:
   pause <issue> | resume <issue>
   log <text>
 hooks:
-  hook user-prompt|pre-tool|post-tool   hook JSON on stdin
+  hook <event>                 user-prompt|pre-tool|post-tool|stop|stop-failure|notify; hook JSON on stdin
 setup:
   version                      release version, or dev
   dir | name | root            state dir / project name / plugin dir

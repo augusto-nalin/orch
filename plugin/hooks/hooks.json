@@ -1,5 +1,5 @@
 {
-  "description": "orch broker: session registry, claim/commit gates, commit bookkeeping, silent/stalled workers",
+  "description": "orch broker: session registry, claim/commit gates, commit bookkeeping, silent/stalled workers, worker permission alerts",
   "hooks": {
     "UserPromptSubmit": [
       { "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/orchctl\" hook user-prompt", "timeout": 10 }] }
@@ -21,6 +21,12 @@
     ],
     "StopFailure": [
       { "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/orchctl\" hook stop-failure", "timeout": 10 }] }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt",
+        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/orchctl\" hook notify", "timeout": 10 }]
+      }
     ]
   }
 }

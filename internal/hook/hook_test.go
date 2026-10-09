@@ -172,7 +172,7 @@ func TestCommitFlow(t *testing.T) {
 	if got, _ := decision(t, f.run("pre-tool", "w1", commit)); got != "allow" {
 		t.Fatalf("commit with token: %s", got)
 	}
-	if len(f.notified) != 1 || f.notified[0] != "demo-feat-a waits for commit approval" {
+	if len(f.notified) != 0 {
 		t.Fatalf("notified %v", f.notified)
 	}
 	f.head = "bbbbbbb2c3" // the commit landed
@@ -405,4 +405,20 @@ func TestStopFailure(t *testing.T) {
 	}
 	f.prompt("w1", "continue where you stopped")
 	f.prompt("o1", "status?")
+}
+
+func TestPermissionNotify(t *testing.T) {
+	f := newFixture(t)
+	f.prompt("w1", "/worker feat-a")
+	f.prompt("o1", "/orch:orch")
+	perm := map[string]any{"hook_event_name": "Notification", "notification_type": "permission_prompt", "message": "Claude needs your permission to use Bash"}
+
+	if out := f.run("notify", "w1", perm); out != "" {
+		t.Fatalf("output %q", out)
+	}
+	// the orch keeps its own terminal alerts
+	f.run("notify", "o1", perm)
+	if len(f.notified) != 1 || f.notified[0] != "demo-feat-a: Claude needs your permission to use Bash" {
+		t.Fatalf("notified %q", f.notified)
+	}
 }

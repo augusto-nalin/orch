@@ -33,6 +33,8 @@ type Input struct {
 	// Stop / StopFailure
 	StopHookActive bool   `json:"stop_hook_active"`
 	Error          string `json:"error"`
+	// Notification
+	Message string `json:"message"`
 }
 
 // Agent is one row of `claude agents --json`.
@@ -125,6 +127,8 @@ func Run(event string, stdin io.Reader, stdout io.Writer, env Env) int {
 		out, err = h.stop()
 	case "stop-failure":
 		err = h.stopFailure()
+	case "notify":
+		err = h.notify()
 	default:
 		err = fmt.Errorf("unknown event %q", event)
 	}
@@ -415,9 +419,6 @@ func (h *handler) workerBash() (any, error) {
 			if err := h.b.SetHead(issue, h.env.Head(gdir)); err != nil {
 				return nil, err
 			}
-			if h.env.Notify != nil {
-				h.env.Notify("orch", h.sess.Name+" waits for commit approval")
-			}
 		}
 	}
 	return nil, nil
@@ -500,6 +501,19 @@ func (h *handler) stop() (any, error) {
 		"orch: you hold claims and sent the orch nothing this turn, so it won't know. "+
 			"Done → READY + orchctl wait %[1]s commit; need a decision → Q; blocked → HELD + orchctl wait %[1]s go; "+
 			"not finished → keep going. If you were only talking with the user directly, end your turn again.", h.sess.Issue)}, nil
+}
+
+// notify: a worker's own terminal alerts are off (worker-settings.json), so a
+// permission prompt — the one thing it needs the user for — is raised here.
+func (h *handler) notify() error {
+	ok, err := h.role()
+	if err != nil || !ok || h.sess.Role != "worker" {
+		return err
+	}
+	if h.env.Notify != nil {
+		h.env.Notify("orch", h.sess.Name+": "+h.in.Message)
+	}
+	return nil
 }
 
 // stopFailure: an API error ended the turn (no Stop hook runs). Mark the worker

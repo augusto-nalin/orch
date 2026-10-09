@@ -72,7 +72,9 @@ screen)
     '.[] | select(.kind=="background" and .pid != null and (.name|startswith($p)) and .name != $s) | .name' |
     sort -u | while read -r w; do "$0" pane "$w" >/dev/null; done
   on_session "$orch" '            select sess' >/dev/null
-  exec claude agents          # this pane becomes the agent overview
+  # This pane becomes the agent overview — muted: it alerts on every session's turn
+  # end; workers raise permission prompts through the orch hook, the orch pane alerts itself.
+  exec claude --settings '{"preferredNotifChannel":"notifications_disabled"}' agents
   ;;
 pane)
   name="$2"
