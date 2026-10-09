@@ -545,8 +545,9 @@ type stopOut struct {
 	Reason   string `json:"reason"`
 }
 
-// stop: a worker that ends its turn holding claims without a word to the orch
-// (or a wait) is sent back once — otherwise the orch never hears of it.
+// stop: a worker that ends its turn without a word to the orch (or a wait) is
+// sent back once — otherwise the orch never hears of it. Text in its own pane
+// reaches no one.
 func (h *handler) stop() (any, error) {
 	ok, err := h.role()
 	if err != nil || !ok || h.sess.Role != "worker" {
@@ -562,9 +563,10 @@ func (h *handler) stop() (any, error) {
 				"Send it: COMMITTED %[1]s: %[2]s", h.sess.Issue, sha)}, nil
 	}
 	return &stopOut{Decision: "block", Reason: fmt.Sprintf(
-		"orch: you hold claims and sent the orch nothing this turn, so it won't know. "+
+		"orch: you sent the orch nothing this turn, so it won't know — text in your own pane reaches no one. "+
+			"Send with the SendMessage tool to %[2]s-orch (not loaded? ToolSearch select:SendMessage). "+
 			"Done → READY + orchctl wait %[1]s commit; need a decision → Q; blocked → HELD + orchctl wait %[1]s go; "+
-			"not finished → keep going. If you were only talking with the user directly, end your turn again.", h.sess.Issue)}, nil
+			"not finished → keep going. If you were only talking with the user directly, end your turn again.", h.sess.Issue, h.p.Name)}, nil
 }
 
 // notify: a worker's own terminal alerts are off (worker-settings.json), so a

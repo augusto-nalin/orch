@@ -212,8 +212,8 @@ func TestCommitFlow(t *testing.T) {
 	if got := f.stop("w1", false); got != "allow" {
 		t.Fatalf("after COMMITTED: %s", got)
 	}
-	if got := f.stop("w1", false); got != "allow" {
-		t.Fatalf("reported, no claims: %s", got)
+	if got := f.stop("w1", false); got != "block" {
+		t.Fatalf("next silent turn: %s", got)
 	}
 	log, _ := os.ReadFile(filepath.Join(f.p.StateDir, "log.md"))
 	if !strings.Contains(string(log), "feat-a commit bbbbbbb") {
@@ -350,8 +350,12 @@ func TestSilentStop(t *testing.T) {
 	f.prompt("w1", "/worker feat-a")
 	f.prompt("o1", "/orch:orch")
 
-	if got := f.stop("w1", false); got != "allow" {
-		t.Fatalf("no claims: %s", got)
+	// Claims or not: a Q left as text in the worker's own pane never reaches the orch.
+	if got := f.stop("w1", false); got != "block" {
+		t.Fatalf("silent, no claims: %s", got)
+	}
+	if got := f.stop("w1", true); got != "allow" {
+		t.Fatalf("second stop, no claims: %s", got)
 	}
 	f.b.Claim("feat-a", "file", []string{"src/a.go"})
 	if got := f.stop("w1", false); got != "block" {

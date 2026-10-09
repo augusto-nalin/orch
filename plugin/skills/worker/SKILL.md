@@ -63,6 +63,9 @@ passed, then `READY … | done | checks: passed`. Nothing to try by hand → `ch
 The hook refuses `READY … done` while a `CHECK` is open or without the field.
 
 ## Messages
+Send every message with the `SendMessage` tool, `to: "<project>-orch"` (or the `from`
+of the orch's message). It may start unloaded: `ToolSearch` `select:SendMessage` first.
+Text in your own pane reaches no one — a `Q` you only print is never asked.
 One line, ultra, ≤300 chars — except `Q` and `CHECK`.
 ```
 Q <issue>: <question in plain English, ≤2 sentences>
@@ -101,8 +104,8 @@ No diffs, logs, file lists or step-by-step accounts.
   `CONFLICT`, end your turn. Never overwrite or revert anyone's work.
 - `PAUSE` → stop editing, end your turn (edits are denied while paused). On `RESUME`,
   do what it says first (usually re-read files).
-- Never end a turn holding claims without a message to the orch (`READY`, `Q`,
-  `HELD`…) or a wait — the orch can't see you otherwise; the Stop hook sends you back once.
+- Never end a turn without a message to the orch (`READY`, `Q`, `HELD`…) or a wait —
+  the orch can't see you otherwise; the Stop hook sends you back once.
 
 ## Commits
 - Done, or asked to hand over → send `READY`, run `orchctl wait <issue> commit` with

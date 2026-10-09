@@ -651,16 +651,15 @@ func (b *Broker) Spoke(issue string) error {
 }
 
 // TurnEnd runs when issue's worker ends a turn: it clears the turn's Spoke mark
-// and reports whether the worker ends it silent — holding claims or an unreported
-// commit (its sha in unreported), not paused, and without having messaged the orch
-// or started a wait.
+// and reports whether the worker ends it silent — not paused, and without having
+// messaged the orch or started a wait; an unreported commit's sha comes back in
+// unreported.
 func (b *Broker) TurnEnd(issue string) (silent bool, unreported string, err error) {
 	err = b.St.Update(func(s *state.State, log logf) error {
 		spoke := s.Spoke[issue]
 		delete(s.Spoke, issue)
 		unreported = s.Unreported[issue]
-		held := slices.ContainsFunc(s.Claims, func(c state.Claim) bool { return c.Issue == issue })
-		silent = (held || unreported != "") && !spoke && !s.Paused[issue]
+		silent = !spoke && !s.Paused[issue]
 		return nil
 	})
 	return silent, unreported, err
