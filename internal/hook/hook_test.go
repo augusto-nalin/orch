@@ -98,6 +98,7 @@ func TestPreTool(t *testing.T) {
 	f.b.Claim("feat-a", "file", []string{"src/a.go", "docs/"})
 	f.b.CommitGo("feat-a", 1)
 	stateDir := f.p.StateDir
+	t.Setenv("ORCH_TEST_REPO", f.repo)
 
 	cases := []struct {
 		name, session, tool string
@@ -120,6 +121,16 @@ func TestPreTool(t *testing.T) {
 		{"redirect claimed", "w1", "Bash", map[string]any{"command": "echo x > src/a.go"}, "allow", ""},
 		{"redirect via cd", "w2", "Bash", map[string]any{"command": "cd src && cat a > b.go", "cwd": "/"}, "allow", ""},
 		{"redirect into repo via cd", "w2", "Bash", map[string]any{"command": "cd " + f.repo + "/src && cat a > b.go"}, "deny", "orchctl claim feat-b src/b.go"},
+		{"redirect to env var outside repo", "w2", "Bash", map[string]any{"command": "echo x > $ORCH_HOME/out.txt"}, "allow", ""},
+		{"redirect to braced var in repo", "w2", "Bash", map[string]any{"command": "echo x > ${ORCH_TEST_REPO}/src/b.go"}, "deny", "orchctl claim feat-b src/b.go"},
+		{"redirect to var set in command", "w2", "Bash", map[string]any{"command": "D=/tmp/x; echo hi > $D/f"}, "allow", ""},
+		{"export var then redirect", "w2", "Bash", map[string]any{"command": "export D=src && echo hi > $D/a.go"}, "deny", "orchctl claim feat-b src/a.go"},
+		{"redirect to $PWD after cd", "w2", "Bash", map[string]any{"command": "cd /tmp && echo hi > $PWD/f"}, "allow", ""},
+		{"redirect to unknown var", "w2", "Bash", map[string]any{"command": "echo x > $ORCH_NO_SUCH_VAR/f"}, "deny", "use a literal path"},
+		{"redirect to command substitution", "w2", "Bash", map[string]any{"command": "echo x > $(orchctl dir)/f"}, "deny", "use a literal path"},
+		{"var set from command substitution", "w2", "Bash", map[string]any{"command": "D=$(orchctl dir); echo x > $D/f"}, "deny", "use a literal path"},
+		{"relative redirect after unknown cd", "w2", "Bash", map[string]any{"command": "cd $ORCH_NO_SUCH_VAR && echo x > f"}, "deny", "use a literal path"},
+		{"absolute redirect after unknown cd", "w2", "Bash", map[string]any{"command": "cd $ORCH_NO_SUCH_VAR && echo x > /tmp/f"}, "allow", ""},
 		{"orch reads repo", "o1", "Read", map[string]any{"file_path": f.repo + "/src/a.go"}, "deny", "send a pointer to the worker"},
 		{"orch reads image", "o1", "Read", map[string]any{"file_path": "/tmp/shot.png"}, "deny", "no images"},
 		{"orch reads state", "o1", "Read", map[string]any{"file_path": stateDir + "/issues/feat-a.md"}, "allow", ""},

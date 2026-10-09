@@ -415,11 +415,24 @@ func (h *handler) checkEdit(path, how string) (any, error) {
 
 func (h *handler) workerBash() (any, error) {
 	issue := h.sess.Issue
-	dir := h.in.Cwd
+	dir := h.in.Cwd // "" once a cd goes somewhere we can't work out
+	vars := shellVars{"PWD": &dir}
 	for _, seg := range splitShell(h.str("command")) {
+		if vars.assign(seg) {
+			continue
+		}
 		if len(seg.args) >= 1 && seg.args[0] == "cd" {
 			if len(seg.args) > 1 {
-				dir = h.abs(dir, seg.args[1])
+				if t, ok := vars.expand(seg.args[1]); ok && (dir != "" || filepath.IsAbs(t) || strings.HasPrefix(t, "~/")) {
+					dir = h.abs(dir, t)
+				} else {
+					dir = ""
+				}
+			}
+			d := dir
+			vars["PWD"] = &d
+			if dir == "" {
+				vars["PWD"] = nil
 			}
 			continue
 		}
@@ -430,7 +443,11 @@ func (h *handler) workerBash() (any, error) {
 			continue
 		}
 		for _, t := range editTargets(seg) {
-			if out, err := h.checkEdit(h.abs(dir, t), " (Bash edits count too)"); out != nil || err != nil {
+			x, ok := vars.expand(t)
+			if !ok || dir == "" && !filepath.IsAbs(x) && !strings.HasPrefix(x, "~/") {
+				return deny(fmt.Sprintf("can't tell which file %q is: use a literal path", t)), nil
+			}
+			if out, err := h.checkEdit(h.abs(dir, x), " (Bash edits count too)"); out != nil || err != nil {
 				return out, err
 			}
 		}
@@ -442,8 +459,8 @@ func (h *handler) workerBash() (any, error) {
 		if g.dir != "" {
 			gdir = h.abs(dir, g.dir)
 		}
-		if project.Resolve(gdir).Root != h.p.Root {
-			continue // another repo
+		if !filepath.IsAbs(gdir) || project.Resolve(gdir).Root != h.p.Root {
+			continue // another repo, or somewhere we can't work out
 		}
 		switch {
 		case g.stagesAll():

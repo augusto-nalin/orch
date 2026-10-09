@@ -87,3 +87,33 @@ func TestEditTargets(t *testing.T) {
 		}
 	}
 }
+
+func TestExpandVars(t *testing.T) {
+	t.Setenv("ORCH_X", "/env")
+	t.Setenv("ORCH_EMPTY", "")
+	one := "/one"
+	v := shellVars{"A": &one, "B": nil}
+	cases := []struct {
+		w, want string
+		ok      bool
+	}{
+		{"plain/f", "plain/f", true},
+		{"$A/f", "/one/f", true},
+		{"${A}x/f", "/onex/f", true},
+		{"$ORCH_X/$A", "/env//one", true},
+		{"$ORCH_EMPTY/f", "/f", true},
+		{"cost$", "cost$", true},
+		{"$B/f", "", false},
+		{"$ORCH_UNSET_VAR/f", "", false},
+		{"$(pwd)/f", "", false},
+		{"`pwd`/f", "", false},
+		{"${A:-x}/f", "", false},
+		{"$1/f", "", false},
+		{"$$/f", "", false},
+	}
+	for _, c := range cases {
+		if got, ok := v.expand(c.w); got != c.want || ok != c.ok {
+			t.Errorf("%q: got %q %v, want %q %v", c.w, got, ok, c.want, c.ok)
+		}
+	}
+}

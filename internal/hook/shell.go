@@ -1,6 +1,7 @@
 package hook
 
 import (
+	"os"
 	"strings"
 )
 
@@ -300,3 +301,99 @@ func editTargets(seg segment) []string {
 	}
 	return out
 }
+
+// shellVars tracks the variables a Bash call sets before using them (X=v,
+// export X=v); the rest come from the hook's own environment.
+type shellVars map[string]*string // nil value: set to something we can't work out
+
+func (v shellVars) lookup(name string) (string, bool) {
+	if x, ok := v[name]; ok {
+		if x == nil {
+			return "", false
+		}
+		return *x, true
+	}
+	return os.LookupEnv(name)
+}
+
+// assign records seg if it only sets variables; reports whether it did.
+func (v shellVars) assign(seg segment) bool {
+	a := seg.args
+	if len(a) > 1 && (a[0] == "export" || a[0] == "local" || a[0] == "declare" || a[0] == "typeset") {
+		a = a[1:]
+	}
+	if len(a) == 0 || len(seg.redirs) > 0 {
+		return false
+	}
+	for _, w := range a {
+		if i := strings.IndexByte(w, '='); i <= 0 || !isName(w[:i]) {
+			return false
+		}
+	}
+	for _, w := range a {
+		i := strings.IndexByte(w, '=')
+		if x, ok := v.expand(w[i+1:]); ok {
+			v[w[:i]] = &x
+		} else {
+			v[w[:i]] = nil
+		}
+	}
+	return true
+}
+
+// expand resolves $VAR and ${VAR} in w; false when w holds anything it can't
+// work out: $(…), `…`, ${VAR…} with operators, $1/$?/…, an unknown variable.
+func (v shellVars) expand(w string) (string, bool) {
+	if !strings.ContainsAny(w, "$`") {
+		return w, true
+	}
+	var b strings.Builder
+	for i := 0; i < len(w); i++ {
+		switch {
+		case w[i] == '`':
+			return "", false
+		case w[i] != '$' || i+1 == len(w):
+			b.WriteByte(w[i])
+		case w[i+1] == '{':
+			j := strings.IndexByte(w[i:], '}')
+			if j < 0 || !isName(w[i+2:i+j]) {
+				return "", false
+			}
+			x, ok := v.lookup(w[i+2 : i+j])
+			if !ok {
+				return "", false
+			}
+			b.WriteString(x)
+			i += j
+		default:
+			j := i + 1
+			for j < len(w) && (w[j] == '_' || isAlpha(w[j]) || j > i+1 && w[j] >= '0' && w[j] <= '9') {
+				j++
+			}
+			if j == i+1 {
+				return "", false // $(…), $1, $?, $$ …
+			}
+			x, ok := v.lookup(w[i+1 : j])
+			if !ok {
+				return "", false
+			}
+			b.WriteString(x)
+			i = j - 1
+		}
+	}
+	return b.String(), true
+}
+
+func isName(s string) bool {
+	if s == "" || s[0] >= '0' && s[0] <= '9' {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] != '_' && !isAlpha(s[i]) && (s[i] < '0' || s[i] > '9') {
+			return false
+		}
+	}
+	return true
+}
+
+func isAlpha(c byte) bool { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }
