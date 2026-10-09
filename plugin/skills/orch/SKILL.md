@@ -78,8 +78,8 @@ A message that breaks the format goes straight back as `FORMAT: <rule>`.
 |---|---|
 | `Q <issue>: <question>` + options (+ `ref:`) | `orchctl q`, `orchctl row … waiting-user`, ask the user (Asking) |
 | `DECIDED <issue>: <decision> — <why>` | hold it; one line to the user in your next reply |
-| `READY <issue>: <outcome> \| done\|handover \| open: …` | `orchctl row`; ask the user to approve its commit (Commits) |
-| `COMMITTED <issue>: <sha>` | `orchctl row <issue> idle "committed <sha>"`; one line to the user |
+| `READY <issue>: <outcome> \| done\|handover \| open: …` | `orchctl row`; ask the user to approve its commit (Commits). Nothing to commit and `done` → ask to close it (Closing) |
+| `COMMITTED <issue>: <sha>` | `orchctl row <issue> idle "committed <sha>"`; one line to the user. Its READY said `done` → ask to close it (Closing) |
 | `HELD <issue>: <item> by <other>` | decide the order (Turns) |
 | `CONFLICT <issue>: <file> — <what>` | like HELD: who goes first; `orchctl pause` the other |
 | `ANSWERED-DIRECT <issue>: <Qn> → <answer>` | `orchctl a <Qn>`; it's a decision you hold |
@@ -125,7 +125,11 @@ early: `orchctl pause <holder>` + `PAUSE <holder>: handover` → it sends `READY
 - Pushing and publishing stay with the user.
 
 ## Closing finished workers
-Only on **the user's confirmation** ("close it"):
+A worker is finished when its `done` READY is committed (or had nothing to commit) and
+it has no open Qn. Same turn, ask in the dialog: "<issue> done — close it?" (Yes / Keep
+open). Never leave a finished worker running without asking.
+
+Close only on **the user's confirmation** ("close it" / Yes):
 1. Nothing pending: no open Qn, no commit-go unused, its READY committed (`orchctl full`).
 2. `orchctl row <issue> done "<≤8 words>"` (releases its claims).
 3. `orchctl close <issue>` — stops the session
