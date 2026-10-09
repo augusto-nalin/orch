@@ -37,6 +37,7 @@ orch:
   commit-go <issue> [n]
   pause <issue> | resume <issue>
   log <text>
+  versioning [on|off]          workers bump the version before code edits? (unset until asked)
 hooks:
   hook <event>                 user-prompt|pre-tool|post-tool|stop|stop-failure|notify; hook JSON on stdin
 setup:
@@ -202,6 +203,8 @@ func run(args []string, stdout io.Writer) (string, int) {
 			return "", 2
 		}
 		return res(b.Checked(args[0]))
+	case "versioning":
+		return res(b.Versioning(strings.Join(args, " ")))
 	case "log":
 		if !need(1) {
 			return "", 2

@@ -36,11 +36,14 @@ read or write stays in your context for good, so:
 On start:
 1. Session not named `<project>-orch` → tell the user to type `/rename <project>-orch`.
 2. `ListAgents`, reconcile with the board: which workers are live, which stopped.
+3. `versioning: unset` above → ask the user (your own question): "Should workers bump
+   this project's version as they go — patch for a fix, minor for a feature, over the
+   last published release?" Yes / No → `orchctl versioning on` / `off`.
 
 A `orch: stalled workers …` note on a prompt: an API error ended that worker's turn
 mid-work and it sent nothing. `SendMessage` it "continue where you stopped" (the note
 goes once it runs again) and tell the user in one line.
-3. Short status to the user: open questions first, then active issues.
+4. Short status to the user: open questions first, then active issues.
 
 ## State — the `orchctl` CLI only
 Change state only with `orchctl …` (one-line output) — never Edit, python or heredocs.
@@ -54,6 +57,7 @@ Change state only with `orchctl …` (one-line output) — never Edit, python or
 | worker sends HELD | `orchctl order <item> <issue> [<issue>…]` (see Turns) |
 | user approved a commit | `orchctl commit-go <issue> [n]` |
 | stop / restart a worker's edits | `orchctl pause <issue>` / `orchctl resume <issue>` |
+| user turns version bumps on/off | `orchctl versioning on\|off` |
 | anything else worth a trail | `orchctl log "<issue> <ultra one-liner>"` (the rest log themselves) |
 
 Chain several in one Bash call. **Issue files (`issues/<issue>.md`) belong to the

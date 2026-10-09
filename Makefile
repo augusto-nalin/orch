@@ -4,8 +4,10 @@ REPO := augusto-nalin/orch
 # Signing identity and notary profile for `make release`; override on the command line.
 SIGN_ID ?= $(shell security find-identity -p codesigning -v 2>/dev/null | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -1)
 NOTARY_PROFILE ?= orch-notary
+# Release version: the one in plugin.json (bump it there first); VERSION=x.y.z overrides.
+VERSION ?= $(shell jq -r '.version // empty' plugin/.claude-plugin/plugin.json)
 
-.PHONY: build test install release publish
+.PHONY: build test install bump release publish
 
 # Dev build; the plugin/bin/orchctl shim hands over to it.
 build:
@@ -19,16 +21,33 @@ test:
 install:
 	bash plugin/scripts/orch-setup.sh
 
+# Bump plugin.json for unreleased work: make bump KIND=fix|feat|major. Against the
+# latest published release: fix → patch, feat → minor; an unreleased patch bump
+# becomes minor on a feat; otherwise the version is already right and stays.
+bump:
+	@case "$(KIND)" in fix|feat|major) ;; *) echo "usage: make bump KIND=fix|feat|major"; exit 1;; esac
+	@pub=$$(gh release view -R $(REPO) --json tagName -q .tagName) || exit 1; pub=$${pub#v}; \
+	cur=$$(jq -r .version plugin/.claude-plugin/plugin.json); \
+	set -- $$(echo $$pub $$cur | tr . ' '); M=$$1 m=$$2 p=$$3 cM=$$4 cm=$$5; \
+	case "$(KIND)" in \
+	  major) [ $$cM -gt $$M ] && new=$$cur || new=$$((M+1)).0.0;; \
+	  feat) [ $$cM -gt $$M ] || [ $$cm -gt $$m ] && new=$$cur || new=$$M.$$((m+1)).0;; \
+	  fix) [ "$$cur" != "$$pub" ] && new=$$cur || new=$$M.$$m.$$((p+1));; \
+	esac; \
+	[ "$$new" = "$$cur" ] && { echo "$$cur (published $$pub) — unchanged"; exit 0; }; \
+	jq --arg v "$$new" '.version = $$v' plugin/.claude-plugin/plugin.json > plugin/.claude-plugin/plugin.json.tmp && mv plugin/.claude-plugin/plugin.json.tmp plugin/.claude-plugin/plugin.json; \
+	echo "$$cur → $$new (published $$pub)"
+
 # Release binaries in $(DIST), one per platform, named orchctl-<os>-<arch>[.exe]:
 # darwin-universal (signed, notarized; also as a .zip for manual downloads, since
 # notarytool takes only a zip), linux-amd64/arm64, windows-amd64/arm64.exe. The shim
 # downloads the raw one for its platform and checks it against
 # plugin/bin/orchctl.sha256 ("<sha256>  <asset>" lines). Commit both files changed,
-# push, then `make publish`.
+# push, then `make publish`. Version comes from plugin.json unless VERSION= is given.
 # Needs a "Developer ID Application" certificate in the keychain and, once:
 #   xcrun notarytool store-credentials orch-notary
 release: test
-	@[ -n "$(VERSION)" ] || { echo "usage: make release VERSION=x.y.z"; exit 1; }
+	@[ -n "$(VERSION)" ] || { echo "no version in plugin/.claude-plugin/plugin.json (or set VERSION=x.y.z)"; exit 1; }
 	@[ -n "$(SIGN_ID)" ] || { echo "no Developer ID Application certificate in the keychain (or set SIGN_ID=…)"; exit 1; }
 	$(eval T := $(shell mktemp -d))
 	$(eval LDFLAGS := -s -w -X main.version=$(VERSION))
@@ -57,5 +76,5 @@ release: test
 # installs and days orch was started.
 publish:
 	$(eval V := $(shell jq -r .version plugin/.claude-plugin/plugin.json))
-	@[ "$$(cat $(DIST)/latest-version.txt 2>/dev/null)" = "$(V)" ] || { echo "$(DIST) is not release $(V) — run: make release VERSION=$(V)"; exit 1; }
+	@[ "$$(cat $(DIST)/latest-version.txt 2>/dev/null)" = "$(V)" ] || { echo "$(DIST) is not release $(V) — run: make release"; exit 1; }
 	gh release create v$(V) -R $(REPO) --target $$(git rev-parse HEAD) --title "orch $(V)" --notes "" $(DIST)/orchctl-* $(DIST)/latest-version.txt

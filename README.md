@@ -19,6 +19,5 @@ Then `cd` into a project checkout and run `orch` (in iTerm2 on macOS for worker 
 Needs Go. From a checkout:
 
 ```
-make build                      # dev build at plugin/bin/orchctl-dev; the plugin's orchctl shim uses it
-make release VERSION=x.y.z      # all platforms into dist/ (darwin signed + notarized), updates orchctl.sha256
+make build    # dev build at plugin/bin/orchctl-dev; the plugin's orchctl shim uses it
 ```

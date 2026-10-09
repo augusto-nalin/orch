@@ -173,6 +173,24 @@ func TestPaused(t *testing.T) {
 	}
 }
 
+func TestVersioning(t *testing.T) {
+	b := newBroker(t)
+	got, err := b.Versioning("")
+	must(t, got, err, "unset")
+	got, err = b.Versioning("on")
+	must(t, got, err, "on")
+	got, err = b.Versioning("")
+	must(t, got, err, "on")
+	if _, err := b.Versioning("maybe"); err == nil {
+		t.Fatal("accepted maybe")
+	}
+	got, err = b.Versioning("off")
+	must(t, got, err, "off")
+	if v := view(t, b).Versioning; v != "off" {
+		t.Fatalf("stored %q", v)
+	}
+}
+
 func TestRowDoneCleansUp(t *testing.T) {
 	b := newBroker(t)
 	got, err := b.Row("a", "active", "spawned")
@@ -272,7 +290,7 @@ func TestFull(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"project: proj\n", "orchestrator session name: proj-orch\n",
+		"project: proj\n", "orchestrator session name: proj-orch\n", "versioning: unset — ask the user\n",
 		"| a | proj-a | active |  | spawned | 2026-10-06 |\n",
 		"(1 done/dropped rows hidden — see board.md)",
 		"- build — a (since 2026-10-06)\n",

@@ -370,6 +370,29 @@ func (b *Broker) SetPaused(issue string, on bool) (string, error) {
 	})
 }
 
+// Versioning reports, or with "on"/"off" sets, whether workers bump the project's
+// version before their first code edit. "unset" until the orch asks the user.
+func (b *Broker) Versioning(set string) (string, error) {
+	if set == "" {
+		out := "unset"
+		err := b.St.View(func(s *state.State) error {
+			if s.Versioning != "" {
+				out = s.Versioning
+			}
+			return nil
+		})
+		return out, err
+	}
+	if set != "on" && set != "off" {
+		return "", fmt.Errorf("versioning: want on or off, got %q", set)
+	}
+	return set, b.St.Update(func(s *state.State, log logf) error {
+		s.Versioning = set
+		log("versioning %s", set)
+		return nil
+	})
+}
+
 // ---- board, questions, log ----
 
 // Row adds or updates a board row. done/dropped also releases the issue's claims
@@ -519,8 +542,12 @@ func short(id string) string {
 func (b *Broker) Full(root string) (string, error) {
 	var w strings.Builder
 	err := b.St.View(func(s *state.State) error {
-		fmt.Fprintf(&w, "project: %s\nmain checkout: %s\nstate dir: %s\norchestrator session name: %s-orch\n\n",
-			b.St.Project, root, b.St.Dir, b.St.Project)
+		v := s.Versioning
+		if v == "" {
+			v = "unset — ask the user"
+		}
+		fmt.Fprintf(&w, "project: %s\nmain checkout: %s\nstate dir: %s\norchestrator session name: %s-orch\nversioning: %s\n\n",
+			b.St.Project, root, b.St.Dir, b.St.Project, v)
 		w.WriteString("## Board (not done/dropped)\n| issue | session | status | files | last outcome | updated |\n|---|---|---|---|---|---|\n")
 		hidden := 0
 		for _, r := range s.Rows {

@@ -65,6 +65,7 @@ type State struct {
 	Spoke      map[string]bool     `json:"spoke,omitempty"`      // issue → messaged the orch or started a wait this turn
 	Unreported map[string]string   `json:"unreported,omitempty"` // issue → sha of a commit it hasn't told the orch about yet
 	Checks     map[string]string   `json:"checks,omitempty"`     // issue → "open" (CHECK sent to the user) or "passed" (the orch ran `orchctl checked`)
+	Versioning string              `json:"versioning,omitempty"` // "on" (workers bump the version), "off", or "" (not asked yet)
 }
 
 func New() *State {

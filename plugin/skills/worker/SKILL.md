@@ -53,6 +53,17 @@ Send the `Q`, **end your turn and wait**. Answers come as `A <Qn>: "<verbatim>"`
 record them verbatim in Decisions, then act. If the user talks to you directly,
 afterwards: `ANSWERED-DIRECT` or `NOTE`.
 
+## Version bump
+`orchctl versioning` prints `on` → before your first code edit, bump the project's
+version (the user turned this on for the project; don't ask). Compare the version in
+the repo with the latest published release (its tag or `gh release view`): equal →
+a bug fix bumps the patch, a feature the minor; an unreleased patch bump plus your
+feature → minor; otherwise leave it — fixes and features pile up in one unreleased
+version until the user publishes. Major only when the user asks. Use the project's
+own bump tool if it has one. Version file or published release unclear → `Q` once.
+Claim the file, commit it with your work, send `DECIDED <issue>: version <old>→<new> — fix|feat`.
+`off` or `unset` → leave versions alone.
+
 ## Checks the user tries by hand
 Anything the user must try themselves (in the app, in game, on a device) goes in a
 `CHECK` before `READY … done`, never as a pointer to a file. List each check as a
