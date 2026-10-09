@@ -19,9 +19,9 @@ test:
 install:
 	bash plugin/scripts/orch-setup.sh
 
-# Signed, notarized universal binary in $(DIST)/orchctl.zip; its sha256 goes to
-# plugin/bin/orchctl.sha256, which the shim checks after downloading the zip from
-# the GitHub release. Commit both files changed, push, then `make publish`.
+# Signed, notarized universal binary in $(DIST)/orchctl (the shim downloads it raw)
+# and $(DIST)/orchctl.zip (for manual downloads; notarytool takes only a zip). Its
+# sha256 goes to plugin/bin/orchctl.sha256, which the shim checks after downloading. Commit both files changed, push, then `make publish`.
 # Needs a "Developer ID Application" certificate in the keychain and, once:
 #   xcrun notarytool store-credentials orch-notary
 release: test
@@ -37,16 +37,17 @@ release: test
 	ditto -c -k $(T)/orchctl $(DIST)/orchctl.zip
 	xcrun notarytool submit $(DIST)/orchctl.zip --keychain-profile "$(NOTARY_PROFILE)" --wait
 	codesign --verify --strict $(T)/orchctl
+	cp $(T)/orchctl $(DIST)/orchctl
 	shasum -a 256 $(T)/orchctl | cut -d' ' -f1 > plugin/bin/orchctl.sha256
 	echo $(VERSION) > $(DIST)/latest-version.txt
 	jq --arg v "$(VERSION)" '.version = $$v' plugin/.claude-plugin/plugin.json > $(T)/plugin.json && mv $(T)/plugin.json plugin/.claude-plugin/plugin.json
 	rm -rf $(T)
 	@echo "release $(VERSION) ready: commit plugin/bin/orchctl.sha256 and plugin/.claude-plugin/plugin.json, push, then: make publish"
 
-# GitHub release v<plugin version> with the zip and latest-version.txt (the update
-# check reads it from the latest release). Asset download counts = installs and
-# days orch was started.
+# GitHub release v<plugin version> with the binary, the zip and latest-version.txt
+# (the update check reads it from the latest release). Asset download counts =
+# installs and days orch was started.
 publish:
 	$(eval V := $(shell jq -r .version plugin/.claude-plugin/plugin.json))
 	@[ "$$(cat $(DIST)/latest-version.txt 2>/dev/null)" = "$(V)" ] || { echo "$(DIST) is not release $(V) — run: make release VERSION=$(V)"; exit 1; }
-	gh release create v$(V) -R $(REPO) --target $$(git rev-parse HEAD) --title "orch $(V)" --notes "" $(DIST)/orchctl.zip $(DIST)/latest-version.txt
+	gh release create v$(V) -R $(REPO) --target $$(git rev-parse HEAD) --title "orch $(V)" --notes "" $(DIST)/orchctl $(DIST)/orchctl.zip $(DIST)/latest-version.txt

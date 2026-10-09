@@ -41,16 +41,13 @@ expected_sha256=$(cat "$bin_dir/orchctl.sha256" 2>/dev/null) ||
 download_dir=$(mktemp -d) || fail "mktemp failed"
 trap 'rm -rf "$download_dir"' EXIT
 
-url="https://github.com/$repo/releases/download/v$version/orchctl.zip"
-zip="$download_dir/orchctl.zip"
+url="https://github.com/$repo/releases/download/v$version/orchctl"
+downloaded="$download_dir/orchctl"
 # curl works for a public repo; a private one needs auth, so fall back to gh,
 # which uses the user's GitHub login.
-curl -fsSL --max-time 30 -o "$zip" "$url" 2>/dev/null ||
-  gh release download "v$version" -R "$repo" -p orchctl.zip -D "$download_dir" --clobber 2>/dev/null ||
+curl -fsSL --max-time 30 -o "$downloaded" "$url" 2>/dev/null ||
+  gh release download "v$version" -R "$repo" -p orchctl -D "$download_dir" --clobber 2>/dev/null ||
   fail "download failed: $url"
-
-ditto -x -k "$zip" "$download_dir" || fail "unzip failed: $url"
-downloaded="$download_dir/orchctl"
 
 actual_sha256=$(shasum -a 256 "$downloaded" | cut -d' ' -f1)
 [ "$actual_sha256" = "$expected_sha256" ] || fail "checksum mismatch for $url"
