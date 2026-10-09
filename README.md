@@ -15,8 +15,4 @@ Then `cd` into a project checkout and run `orch` (in iTerm2 on macOS for worker 
 
 ## Build
 
-Needs Go. From a checkout:
-
-```
-make build    # dev build at plugin/bin/orchctl-dev; the plugin's orchctl shim uses it
-```
+From a checkout, with Go: `make build` or `go build -o plugin/bin/orchctl-dev ./cmd/orchctl` (the plugin's `orchctl` uses this dev build when present).
