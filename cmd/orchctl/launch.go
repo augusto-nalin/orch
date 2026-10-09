@@ -110,7 +110,7 @@ func launch(p project.Project, cmd, issue, text string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("claude agents: %v", err)
 		}
-		id, err := lastSession(out, name)
+		id, err := lastSession(out, name, hasTranscript)
 		if err != nil {
 			return "", err
 		}
@@ -134,8 +134,9 @@ func script(root, file string, args ...string) (string, error) {
 }
 
 // lastSession is the session id of the newest background session called name in
-// `claude agents --json --all` output; an error if none, or if it still runs.
-func lastSession(agents []byte, name string) (string, error) {
+// `claude agents --json --all` output that has a transcript (one stopped before its
+// first turn has none, and resuming it fails); an error if none, or if it still runs.
+func lastSession(agents []byte, name string, saved func(id string) bool) (string, error) {
 	var list []struct {
 		Kind, Name, SessionID string
 		StartedAt             int64
@@ -148,7 +149,7 @@ func lastSession(agents []byte, name string) (string, error) {
 	var at int64
 	running := false
 	for _, a := range list {
-		if a.Kind == "background" && a.Name == name && a.StartedAt >= at {
+		if a.Kind == "background" && a.Name == name && a.StartedAt >= at && (a.Pid != nil || saved(a.SessionID)) {
 			id, at, running = a.SessionID, a.StartedAt, a.Pid != nil
 		}
 	}
@@ -159,4 +160,15 @@ func lastSession(agents []byte, name string) (string, error) {
 		return "", fmt.Errorf("%s is still running; message it instead", name)
 	}
 	return id, nil
+}
+
+// hasTranscript: claude kept a transcript for session id, under any project.
+func hasTranscript(id string) bool {
+	dir := os.Getenv("CLAUDE_CONFIG_DIR")
+	if dir == "" {
+		home, _ := os.UserHomeDir()
+		dir = filepath.Join(home, ".claude")
+	}
+	m, _ := filepath.Glob(filepath.Join(dir, "projects", "*", id+".jsonl"))
+	return len(m) > 0
 }
