@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # `orch setup` (also /orch:setup, `make install`): makes orch ready to use. Safe to
 # re-run; prints one line per check.
-#   - in a clone: builds bin/orchctl-dev (Go) when missing or older than the sources
+#   - in a clone: builds bin/orchctl-dev (Go) when missing or older than the sources;
+#     otherwise bin/orchctl downloads the signed release binary on first use
 #   - links orch and orchctl into ~/.local/bin (an installed plugin gets small
 #     wrappers instead, since its versioned path changes on every update)
 #   - checks PATH, a shadowing `orch` alias, iTerm2, jq, claude
@@ -21,13 +22,12 @@ warn() { echo "warn  $*"; }
 err()  { echo "error $*"; fail=1; }
 
 # A clone builds orchctl-dev when it's missing or any Go source is newer; the
-# release binary (bin/orchctl) hands over to it. An installed plugin ships only the
-# release binary.
+# bin/orchctl shim hands over to it. Without it (an installed plugin, or no go) the
+# shim downloads the signed release binary for this version.
 if [ -f "$repo/go.mod" ]; then
   if [ ! -x "$dev" ] || [ -n "$(find "$repo/cmd" "$repo/internal" "$repo/go.mod" -newer "$dev" -name '*.go' -o -newer "$dev" -name go.mod 2>/dev/null | head -1)" ]; then
     if ! command -v go >/dev/null; then
-      [ -x "$bin" ] && warn "go not found — using the release orchctl, not your sources" ||
-        err "go not found — install it (brew install go), then re-run: orch setup"
+      warn "go not found — using the release orchctl, not your sources"
     elif (cd "$repo" && go build -o "$dev" ./cmd/orchctl); then
       did "built $dev"
     else
@@ -36,9 +36,8 @@ if [ -f "$repo/go.mod" ]; then
   else
     ok "orchctl-dev up to date"
   fi
-  [ -e "$bin" ] || { [ -x "$dev" ] && cp "$dev" "$bin" && did "no release orchctl yet — copied the dev build"; }
 fi
-[ -x "$bin" ] && ok "orchctl $("$bin" version)" || err "$bin missing — reinstall the plugin"
+if v=$("$bin" version); then ok "orchctl $v"; else err "orchctl not runnable (see above)"; fi
 
 mkdir -p "$links"
 case "$plugin" in
@@ -103,8 +102,7 @@ if [ -d "$legacy" ] && [ ! -L "$legacy" ]; then
 fi
 
 # Old markdown state for the current project → state.json.
-if [ -x "$bin" ]; then
-  dir=$("$bin" dir)
+if dir=$("$bin" dir 2>/dev/null); then
   if [ -f "$dir/state.json" ]; then
     ok "state $dir"
   elif [ -f "$dir/board.md" ]; then

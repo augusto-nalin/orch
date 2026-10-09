@@ -63,8 +63,8 @@ plugin/skills/worker/SKILL.md    slimmed
 plugin/scripts/             orch-screen.sh (`orch` start command), orch-setup.sh (`orch setup`), orch-iterm.sh, orch-pane.sh, orch-close.sh (moved from ~/.claude/skills/orch; iTerm2 only)
 plugin/orch-settings.json   moved from ~/.claude/skills/orch (caveman off, you-should-know on, state dir writable)
 plugin/worker-settings.json passed to workers: state dir writable in the sandbox, orchctl allowed
-plugin/bin/orchctl          build output (gitignored)
-Makefile                    build → plugin/bin/orchctl; test; install (= orch setup)
+plugin/bin/orchctl          shim: orchctl-dev if built, else signed release binary (downloaded, sha256-checked)
+Makefile                    build → plugin/bin/orchctl-dev; test; install (= orch setup); release; publish
 ```
 
 ### State

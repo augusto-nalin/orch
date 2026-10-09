@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"orch/internal/broker"
@@ -43,6 +42,7 @@ hooks:
 setup:
   version                      release version, or dev
   dir | name | root            state dir / project name / plugin dir
+  update-check                 say if a newer release exists (asks GitHub at most daily)
   flags orch|worker            claude flags for that session (shell-quoted)
   import [--force]             board.md + questions.md → state.json
 `
@@ -51,7 +51,6 @@ setup:
 var version = "dev"
 
 func main() {
-	devExec()
 	out, code := run(os.Args[1:], os.Stdout)
 	if out != "" {
 		fmt.Println(out)
@@ -98,6 +97,12 @@ func run(args []string, stdout io.Writer) (string, int) {
 		return res(b.Full(p.Root))
 	case "root":
 		return res(pluginRoot())
+	case "update-check":
+		root, err := pluginRoot()
+		if err != nil {
+			return res("", err)
+		}
+		return updateCheck(root, time.Now()), 0
 	case "flags":
 		if !need(1) {
 			return "", 2
@@ -219,22 +224,6 @@ func run(args []string, stdout io.Writer) (string, int) {
 	}
 	fmt.Fprint(os.Stderr, usage)
 	return "", 2
-}
-
-// devExec: in a clone, `make build` writes bin/orchctl-dev next to the committed
-// release binary, which hands over to it so hooks run the code being worked on.
-func devExec() {
-	exe, err := os.Executable()
-	if err != nil {
-		return
-	}
-	if exe, err = filepath.EvalSymlinks(exe); err != nil || filepath.Base(exe) != "orchctl" {
-		return
-	}
-	dev := filepath.Join(filepath.Dir(exe), "orchctl-dev")
-	if _, err := os.Stat(dev); err == nil {
-		syscall.Exec(dev, append([]string{dev}, os.Args[1:]...), os.Environ())
-	}
 }
 
 // normalize turns file args into paths relative to their checkout top, so claims

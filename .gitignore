@@ -1,1 +1,3 @@
 /plugin/bin/orchctl-dev
+/plugin/bin/orchctl-[0-9]*
+/dist/

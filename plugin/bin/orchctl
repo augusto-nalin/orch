@@ -1,0 +1,24 @@
+#!/bin/bash
+# orchctl shim: runs the signed release binary for this plugin version, downloading
+# it from GitHub Releases (curl, or gh for a private repo) on first use and checking it against orchctl.sha256.
+# In a clone, `make build` writes orchctl-dev here, which takes precedence.
+d=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)
+[ -x "$d/orchctl-dev" ] && exec "$d/orchctl-dev" "$@"
+die() { echo "orchctl: $*" >&2; exit 1; }
+v=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$d/../.claude-plugin/plugin.json")
+[ -n "$v" ] || die "no version in $d/../.claude-plugin/plugin.json"
+b="$d/orchctl-$v"
+[ -x "$b" ] && exec "$b" "$@"
+want=$(cat "$d/orchctl.sha256" 2>/dev/null) || die "no orchctl.sha256 — in a clone run: make build"
+t=$(mktemp -d) || die "mktemp failed"
+trap 'rm -rf "$t"' EXIT
+url="https://github.com/augusto-nalin/orch/releases/download/v$v/orchctl.zip"
+# A private repo needs auth: fall back to gh, which uses the user's login.
+curl -fsSL --max-time 30 -o "$t/orchctl.zip" "$url" 2>/dev/null ||
+  gh release download "v$v" -R augusto-nalin/orch -p orchctl.zip -D "$t" --clobber 2>/dev/null ||
+  die "download failed: $url"
+ditto -x -k "$t/orchctl.zip" "$t" || die "unzip failed: $url"
+[ "$(shasum -a 256 "$t/orchctl" | cut -d' ' -f1)" = "$want" ] || die "checksum mismatch for $url"
+chmod +x "$t/orchctl" && mv -f "$t/orchctl" "$b" || die "can't write $b"
+for old in "$d"/orchctl-[0-9]*; do [ "$old" = "$b" ] || rm -f "$old"; done
+exec "$b" "$@"

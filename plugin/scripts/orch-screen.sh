@@ -15,6 +15,7 @@ if ! command -v orchctl >/dev/null || [ ! -x "$plugin/bin/orchctl" ]; then
   bash "$plugin/scripts/orch-setup.sh" || exit 1
   export PATH="$HOME/.local/bin:$PATH"
 fi
+"$plugin/bin/orchctl" update-check
 if [ "${TERM_PROGRAM:-}" != "iTerm.app" ]; then
   echo "orch needs iTerm2 (TERM_PROGRAM=${TERM_PROGRAM:-unset})" >&2
   exit 1
