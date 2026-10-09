@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"syscall"
 	"time"
 )
 
@@ -140,11 +139,11 @@ func (st *Store) lock(how int) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := syscall.Flock(int(f.Fd()), how); err != nil {
+	if err := lockFile(f, how); err != nil {
 		f.Close()
 		return nil, err
 	}
-	return func() { syscall.Flock(int(f.Fd()), syscall.LOCK_UN); f.Close() }, nil
+	return func() { unlockFile(f); f.Close() }, nil
 }
 
 func (st *Store) load() (*State, error) {
@@ -189,7 +188,7 @@ func writeAtomic(path string, b []byte) error {
 
 // View runs fn on the current state under a shared lock.
 func (st *Store) View(fn func(*State) error) error {
-	unlock, err := st.lock(syscall.LOCK_SH)
+	unlock, err := st.lock(lockShared)
 	if err != nil {
 		return err
 	}
@@ -204,7 +203,7 @@ func (st *Store) View(fn func(*State) error) error {
 // Update runs fn under the exclusive lock and saves if it returns nil. Lines fn
 // passes to logf are appended to log.md after the save, still under the lock.
 func (st *Store) Update(fn func(s *State, logf func(string, ...any)) error) error {
-	unlock, err := st.lock(syscall.LOCK_EX)
+	unlock, err := st.lock(lockExclusive)
 	if err != nil {
 		return err
 	}
@@ -226,7 +225,7 @@ func (st *Store) Update(fn func(s *State, logf func(string, ...any)) error) erro
 
 // Log appends dated lines to log.md.
 func (st *Store) Log(lines ...string) error {
-	unlock, err := st.lock(syscall.LOCK_EX)
+	unlock, err := st.lock(lockExclusive)
 	if err != nil {
 		return err
 	}

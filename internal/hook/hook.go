@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
@@ -54,8 +55,17 @@ type Env struct {
 func DefaultEnv() Env {
 	return Env{
 		Notify: func(title, msg string) {
-			script := fmt.Sprintf("display notification %q with title %q", msg, title)
-			if c := exec.Command("osascript", "-e", script); c.Start() == nil {
+			// macOS Notification Center, notify-send on Linux; none on Windows.
+			var c *exec.Cmd
+			switch runtime.GOOS {
+			case "darwin":
+				c = exec.Command("osascript", "-e", fmt.Sprintf("display notification %q with title %q", msg, title))
+			case "linux":
+				c = exec.Command("notify-send", title, msg)
+			default:
+				return
+			}
+			if c.Start() == nil {
 				c.Process.Release()
 			}
 		},

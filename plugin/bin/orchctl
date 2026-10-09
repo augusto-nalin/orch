@@ -4,10 +4,12 @@
 # The plugin ships this script instead of the orchctl binary. It runs, in order:
 #   1. orchctl-dev next to it: the dev build `make build` writes in a clone;
 #   2. orchctl-<version>: the release binary for this plugin version, once downloaded;
-#   3. otherwise it downloads that binary from the GitHub release v<version>,
-#      checks its sha256 against orchctl.sha256 (committed by `make release`),
-#      caches it as orchctl-<version> and runs it.
-# The binary is signed and notarized by `make release`.
+#   3. otherwise it downloads the binary for this OS and CPU (orchctl-darwin-universal,
+#      orchctl-linux-amd64, orchctl-windows-amd64.exe, …) from the GitHub release
+#      v<version>, checks its sha256 against orchctl.sha256 (committed by
+#      `make release`), caches it as orchctl-<version> and runs it.
+# The macOS binary is signed and notarized by `make release`. On Windows this runs
+# under Git Bash, which Claude Code uses for hooks.
 
 repo="augusto-nalin/orch"
 
@@ -20,8 +22,24 @@ fail() {
 bin_dir=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)
 plugin_json="$bin_dir/../.claude-plugin/plugin.json"
 
+# Release asset for this machine; Windows binaries end in .exe.
+ext=""
+case "$(uname -s)" in
+  Darwin) os=darwin ;;
+  Linux) os=linux ;;
+  MINGW* | MSYS* | CYGWIN*) os=windows ext=.exe ;;
+  *) fail "unsupported OS: $(uname -s)" ;;
+esac
+case "$(uname -m)" in
+  x86_64 | amd64) arch=amd64 ;;
+  arm64 | aarch64) arch=arm64 ;;
+  *) fail "unsupported CPU: $(uname -m)" ;;
+esac
+[ "$os" = darwin ] && arch=universal
+asset="orchctl-$os-$arch$ext"
+
 # 1. Dev build in a clone.
-dev_binary="$bin_dir/orchctl-dev"
+dev_binary="$bin_dir/orchctl-dev$ext"
 if [ -x "$dev_binary" ]; then
   exec "$dev_binary" "$@"
 fi
@@ -29,27 +47,33 @@ fi
 # 2. Release binary already downloaded for this plugin version.
 version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$plugin_json")
 [ -n "$version" ] || fail "no version in $plugin_json"
-release_binary="$bin_dir/orchctl-$version"
+release_binary="$bin_dir/orchctl-$version$ext"
 if [ -x "$release_binary" ]; then
   exec "$release_binary" "$@"
 fi
 
 # 3. Download, verify and cache the release binary.
-expected_sha256=$(cat "$bin_dir/orchctl.sha256" 2>/dev/null) ||
-  fail "no orchctl.sha256 — in a clone run: make build"
+# orchctl.sha256 has one "<sha256>  <asset>" line per asset.
+[ -f "$bin_dir/orchctl.sha256" ] || fail "no orchctl.sha256 — in a clone run: make build"
+expected_sha256=$(awk -v a="$asset" '$2 == a { print $1 }' "$bin_dir/orchctl.sha256")
+[ -n "$expected_sha256" ] || fail "no release binary for $os/$arch ($asset)"
 
 download_dir=$(mktemp -d) || fail "mktemp failed"
 trap 'rm -rf "$download_dir"' EXIT
 
-url="https://github.com/$repo/releases/download/v$version/orchctl"
-downloaded="$download_dir/orchctl"
+url="https://github.com/$repo/releases/download/v$version/$asset"
+downloaded="$download_dir/$asset"
 # curl works for a public repo; a private one needs auth, so fall back to gh,
 # which uses the user's GitHub login.
 curl -fsSL --max-time 30 -o "$downloaded" "$url" 2>/dev/null ||
-  gh release download "v$version" -R "$repo" -p orchctl -D "$download_dir" --clobber 2>/dev/null ||
+  gh release download "v$version" -R "$repo" -p "$asset" -D "$download_dir" --clobber 2>/dev/null ||
   fail "download failed: $url"
 
-actual_sha256=$(shasum -a 256 "$downloaded" | cut -d' ' -f1)
+if command -v sha256sum >/dev/null; then
+  actual_sha256=$(sha256sum "$downloaded" | cut -d' ' -f1)
+else
+  actual_sha256=$(shasum -a 256 "$downloaded" | cut -d' ' -f1)
+fi
 [ "$actual_sha256" = "$expected_sha256" ] || fail "checksum mismatch for $url"
 
 chmod +x "$downloaded" && mv -f "$downloaded" "$release_binary" ||

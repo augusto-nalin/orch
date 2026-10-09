@@ -5,14 +5,16 @@
 #     otherwise bin/orchctl downloads the signed release binary on first use
 #   - links orch and orchctl into ~/.local/bin (an installed plugin gets small
 #     wrappers instead, since its versioned path changes on every update)
-#   - checks PATH, a shadowing `orch` alias, iTerm2, jq, claude
+#   - checks PATH, a shadowing `orch` alias, iTerm2 (macOS, for worker panes), jq, claude
 #   - moves a legacy ~/.claude/orch to the state home (symlink left behind)
 #   - imports the current project's old board.md/questions.md into state.json
 set -u
 plugin=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
 repo=$(dirname "$plugin")
 bin="$plugin/bin/orchctl"
-dev="$plugin/bin/orchctl-dev"
+os=$(uname -s)
+case "$os" in MINGW* | MSYS* | CYGWIN*) windows=1 ext=.exe ;; *) windows="" ext="" ;; esac
+dev="$plugin/bin/orchctl-dev$ext"
 links="$HOME/.local/bin"
 state_home="${ORCH_HOME:-${XDG_STATE_HOME:-$HOME/.local/state}/orch}"
 fail=0
@@ -40,7 +42,8 @@ fi
 if v=$("$bin" version); then ok "orchctl $v"; else err "orchctl not runnable (see above)"; fi
 
 mkdir -p "$links"
-case "$plugin" in
+# Windows (Git Bash) has no real symlinks, so a clone gets wrappers there too.
+case "$plugin${windows:+/plugins/cache/}" in
 */plugins/cache/*)
   # Wrappers find the current install in Claude's plugin registry, falling back to this one.
   reg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/installed_plugins.json"
@@ -84,8 +87,15 @@ else
   ok "no orch alias"
 fi
 
-[ -d /Applications/iTerm.app ] && ok "iTerm2" || err "iTerm2 not found — orch needs it (brew install --cask iterm2)"
-command -v jq >/dev/null && ok "jq" || err "jq not found (brew install jq)"
+case "$os" in
+Darwin)
+  jq_hint="brew install jq"
+  [ -d /Applications/iTerm.app ] && ok "iTerm2" ||
+    warn "iTerm2 not found — orch runs without worker panes (brew install --cask iterm2)" ;;
+Linux) jq_hint="install it with your package manager" ;;
+*) jq_hint="winget install jqlang.jq" ;;
+esac
+command -v jq >/dev/null && ok "jq" || err "jq not found ($jq_hint)"
 if ! command -v claude >/dev/null; then err "claude not found"
 elif claude agents --json >/dev/null 2>&1; then ok "claude $(claude --version 2>/dev/null | cut -d' ' -f1)"
 else err "claude too old — orch needs background sessions (claude agents, --bg); run: claude update"; fi

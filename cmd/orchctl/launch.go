@@ -42,6 +42,7 @@ func settingsFile(root, role string) (string, error) {
 		return src, nil
 	}
 	rel, err := filepath.Rel(home, sh)
+	rel = filepath.ToSlash(rel)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
 		return "", fmt.Errorf("state home %s is outside your home dir; the sandbox and permission rules can't name it", sh)
 	}
@@ -49,7 +50,7 @@ func settingsFile(root, role string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	out := strings.ReplaceAll(string(b), "~/.local/state/orch", "~/"+filepath.ToSlash(rel))
+	out := strings.ReplaceAll(string(b), "~/.local/state/orch", "~/"+rel)
 	dst := filepath.Join(sh, role+"-settings.json")
 	if err := os.MkdirAll(sh, 0o755); err != nil {
 		return "", err
