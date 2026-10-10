@@ -46,6 +46,12 @@ In the Code tab, open a session on your project.
 
 Workers run in the background, `claude agents` in the Terminal shows them.
 
+## Update
+
+`orch` says when a newer release is out. Update with \
+`orchctl update` \
+then restart your Claude sessions. It also replaces a dev build (`orchctl version` shows `<version>-dev`) with the release.
+
 ## Build
 
 Build with \

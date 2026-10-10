@@ -42,9 +42,10 @@ orch:
 hooks:
   hook <event>                 user-prompt|pre-tool|post-tool|stop|stop-failure|notify; hook JSON on stdin
 setup:
-  version                      release version, or dev
+  version                      release version, or <plugin version>-dev for a dev build
   dir | name | root            state dir / project name / plugin dir
   update-check                 say if a newer release exists (asks GitHub at most daily)
+  update                       install the latest release (replaces a dev build)
   flags orch|worker            claude flags for that session (shell-quoted)
 `
 
@@ -89,7 +90,8 @@ func run(args []string, stdout io.Writer) (string, int) {
 
 	switch cmd {
 	case "version":
-		return version, 0
+		root, _ := pluginRoot()
+		return currentVersion(root), 0
 	case "dir":
 		return p.StateDir, 0
 	case "name":
@@ -104,6 +106,12 @@ func run(args []string, stdout io.Writer) (string, int) {
 			return res("", err)
 		}
 		return updateCheck(root, time.Now()), 0
+	case "update":
+		root, err := pluginRoot()
+		if err != nil {
+			return res("", err)
+		}
+		return res(update(root))
 	case "flags":
 		if !need(1) {
 			return "", 2
