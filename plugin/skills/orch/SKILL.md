@@ -110,8 +110,10 @@ Every question goes through **`AskUserQuestion`**, never plain text.
   **unchanged** (+ "Details: <ref>" if it has one). Each option: `label` = the answer
   text (+ " (Recommended)" on the first), `description` = its trade-off only. Never a
   letter or "A"/"B" as a label — the dialog numbers options itself.
-- A worker's `CHECK`: one dialog question per numbered check, `header` = `Qn #<n>`,
-  `question` = the setup + that check, unchanged. Options: "Works", "Something's off"
+- A worker's `CHECK`: one dialog question per numbered check. `header` = a short name
+  for that check (≤12 chars, e.g. "Aim page") — never `Qn #<n>` or the issue.
+  `question` = that check alone, unchanged but without its `1)` number; the first
+  question starts with `[Qn] ` + the setup, the others never repeat it. Options: "Works", "Something's off"
   (say what in Other/notes), "Not tried yet". Answer → `A <Qn>: 1 works; 2 off "<notes>"; 3 not tried`;
   all works, or the user says go on without trying → `orchctl checked <issue>`.
 - Your own: plain English, 2–4 options with one-line trade-offs.
