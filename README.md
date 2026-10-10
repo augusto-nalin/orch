@@ -31,6 +31,21 @@ In Claude Code, one command at a time:
 Then `cd` into a project checkout and run `orch` 
 Note: iTerm2 shows agents chats in real time.
 
+## Claude desktop app
+
+In the Code tab, open a session on your project.
+
+1. Open the Terminal (Ctrl+\`) and install \
+`claude plugin marketplace add augusto-nalin/orch` \
+`claude plugin install orch@orch`
+2. Start a new session on the project, then set up orch \
+`/orch:setup`
+3. Rename the session to `<project>-orch` (click its title), where `<project>` is the project folder name, e.g. `orch-orch`
+4. Start the orchestrator \
+`/orch:orch`
+
+Workers run in the background, `claude agents` in the Terminal shows them.
+
 ## Build
 
 Build with \
