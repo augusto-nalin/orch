@@ -205,7 +205,7 @@ func (h *handler) userPrompt() (any, error) {
 	o := &postOut{}
 	o.HookSpecificOutput.HookEventName = "UserPromptSubmit"
 	o.HookSpecificOutput.AdditionalContext = "orch: stalled workers — an API error ended their turn, they sent nothing: " +
-		strings.Join(stalled, "; ") + ". SendMessage each: \"continue where you stopped\"."
+		strings.Join(stalled, "; ") + ". Each: orchctl reopen <issue> \"continue where you stopped\" (it says if it still runs: then SendMessage)."
 	return o, nil
 }
 

@@ -4,11 +4,13 @@ package main
 // so a clone anywhere and an installed plugin both work without hardcoded paths.
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"orch/internal/project"
@@ -107,12 +109,20 @@ func launch(p project.Project, cmd, issue, text string) (string, error) {
 	if cmd == "reopen" {
 		// By id: --resume <name> --bg starts a copy under a new id, and once two
 		// sessions share the name, the next one stalls in the resume picker.
-		out, err := exec.Command("claude", "agents", "--json", "--all").Output()
+		list, err := agents()
 		if err != nil {
-			return "", fmt.Errorf("claude agents: %v", err)
+			return "", err
 		}
-		id, err := lastSession(out, name, hasTranscript)
+		// The resume gets a new id; a blocked one left behind is a second worker.
+		stopped, err := stopBlocked(list, name)
 		if err != nil {
+			return "", err
+		}
+		id, err := lastSession(list, name, hasTranscript)
+		if err != nil {
+			if stopped > 0 {
+				err = fmt.Errorf("%v (stopped %d blocked duplicate(s))", err, stopped)
+			}
 			return "", err
 		}
 		args = []string{"--resume", id, "--bg"}
@@ -134,33 +144,107 @@ func script(root, file string, args ...string) (string, error) {
 	return lastLine("bash", append([]string{filepath.Join(root, "scripts", file)}, args...)...)
 }
 
-// lastSession is the session id of the newest background session called name in
-// `claude agents --json --all` output that has a transcript (one stopped before its
-// first turn has none, and resuming it fails); an error if none, or if it still runs.
-func lastSession(agents []byte, name string, saved func(id string) bool) (string, error) {
-	var list []struct {
-		Kind, Name, SessionID string
-		StartedAt             int64
-		Pid                   *int
+// agent is one session in `claude agents --json --all`.
+type agent struct {
+	ID, Kind, Name, SessionID, State string
+	StartedAt                        int64
+	Pid                              *int
+}
+
+// working: it runs a process. live: working, or blocked — waiting for input or after
+// an API error, with no process, hidden from ListAgents, yet alive until `claude stop`.
+func (a agent) working() bool { return a.Pid != nil }
+func (a agent) live() bool {
+	return a.working() || a.State != "done" && a.State != "stopped" && a.State != "failed"
+}
+
+func agents() ([]agent, error) {
+	out, err := exec.Command("claude", "agents", "--json", "--all").Output()
+	if err != nil {
+		return nil, fmt.Errorf("claude agents: %v", err)
 	}
-	if err := json.Unmarshal(agents, &list); err != nil {
-		return "", fmt.Errorf("claude agents: %v", err)
+	return parseAgents(out)
+}
+
+func parseAgents(out []byte) ([]agent, error) {
+	var list []agent
+	if err := json.Unmarshal(out, &list); err != nil {
+		return nil, fmt.Errorf("claude agents: %v", err)
 	}
-	var id string
-	var at int64
-	running := false
+	return list, nil
+}
+
+// named is the background sessions called name, oldest first.
+func named(list []agent, name string) []agent {
+	var out []agent
 	for _, a := range list {
-		if a.Kind == "background" && a.Name == name && a.StartedAt >= at && (a.Pid != nil || saved(a.SessionID)) {
-			id, at, running = a.SessionID, a.StartedAt, a.Pid != nil
+		if a.Kind == "background" && a.Name == name {
+			out = append(out, a)
 		}
 	}
-	switch {
-	case id == "":
+	slices.SortFunc(out, func(a, b agent) int { return cmp.Compare(a.StartedAt, b.StartedAt) })
+	return out
+}
+
+// lastSession is the session id of the newest background session called name that
+// has a transcript (one stopped before its first turn has none, and resuming it
+// fails); an error if none, or if one of them is working.
+func lastSession(list []agent, name string, saved func(id string) bool) (string, error) {
+	var id string
+	for _, a := range named(list, name) {
+		if a.working() {
+			return "", fmt.Errorf("%s is still running; message it instead", name)
+		}
+		if a.live() || saved(a.SessionID) {
+			id = a.SessionID
+		}
+	}
+	if id == "" {
 		return "", fmt.Errorf("no session named %s to reopen", name)
-	case running:
-		return "", fmt.Errorf("%s is still running; message it instead", name)
 	}
 	return id, nil
+}
+
+// stopBlocked stops the blocked sessions called name and says how many.
+func stopBlocked(list []agent, name string) (int, error) {
+	n := 0
+	for _, a := range named(list, name) {
+		if a.live() && !a.working() && a.ID != "" {
+			if out, err := exec.Command("claude", "stop", a.ID).CombinedOutput(); err != nil {
+				return n, fmt.Errorf("claude stop %s: %v: %s", a.ID, err, strings.TrimSpace(string(out)))
+			}
+			n++
+		}
+	}
+	return n, nil
+}
+
+// alive says, per issue, whether its worker sessions run: "<issue> working|blocked|
+// stopped|none [<id>…]", ids of the live ones. More than one id is a duplicate.
+// Finished issues show only while a session of theirs still lives.
+func alive(list []agent, project string, issues, finished []string) string {
+	var lines []string
+	for n, issue := range append(issues, finished...) {
+		st, ids := "none", []string{}
+		for _, a := range named(list, project+"-"+issue) {
+			switch {
+			case a.working():
+				st = "working"
+			case a.live() && st != "working":
+				st = "blocked"
+			case st == "none":
+				st = "stopped"
+			}
+			if a.live() {
+				ids = append(ids, a.ID)
+			}
+		}
+		if n >= len(issues) && len(ids) == 0 {
+			continue
+		}
+		lines = append(lines, strings.TrimSpace(issue+" "+st+" "+strings.Join(ids, " ")))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // hasTranscript: claude kept a transcript for session id, under any project.

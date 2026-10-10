@@ -28,8 +28,9 @@ orch:
   full                         startup view
   spawn <issue> <prompt>       start the worker in the background + show its pane
   reopen <issue> <message>     reopen a stopped worker + show its pane
-  pane <issue> | close <issue> show a worker's pane / stop it and close the pane
-  row <issue> <status> [outcome]
+  pane <issue> | close <issue> show a worker's pane / stop all its sessions and close the pane
+  alive [<issue>…]             <issue> working|blocked|stopped|none [live ids] (default: board, done ones only if live)
+  row <issue> <status> [outcome]   done/dropped also closes the worker
   q <issue> <gist>             → Qn
   a <Qn> [note]
   checked <issue>              the user passed (or skipped) the worker's CHECK
@@ -127,11 +128,45 @@ func run(args []string, stdout io.Writer) (string, int) {
 			return res("", err)
 		}
 		return res(script(root, "orch-"+cmd+".sh", p.Name+"-"+args[0]))
+	case "alive":
+		open, finished := args, []string(nil)
+		if len(args) == 0 {
+			if err := st.View(func(s *state.State) error {
+				for _, r := range s.Rows {
+					if r.Status == "done" || r.Status == "dropped" {
+						finished = append(finished, r.Issue)
+					} else {
+						open = append(open, r.Issue)
+					}
+				}
+				return nil
+			}); err != nil {
+				return res("", err)
+			}
+		}
+		list, err := agents()
+		if err != nil {
+			return res("", err)
+		}
+		return alive(list, p.Name, open, finished), 0
 	case "row":
 		if !need(2) {
 			return "", 2
 		}
-		return res(b.Row(args[0], args[1], strings.Join(args[2:], " ")))
+		out, err := b.Row(args[0], args[1], strings.Join(args[2:], " "))
+		if err != nil || args[1] != "done" && args[1] != "dropped" {
+			return res(out, err)
+		}
+		// A finished worker left running is a session nobody talks to any more.
+		root, err := pluginRoot()
+		if err != nil {
+			return res("", err)
+		}
+		closed, err := script(root, "orch-close.sh", p.Name+"-"+args[0])
+		if err != nil {
+			closed = err.Error()
+		}
+		return out + "\n" + closed, 0
 	case "claim", "need", "release":
 		if !need(1) || cmd != "release" && !need(2) {
 			return "", 2

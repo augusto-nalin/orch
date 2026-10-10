@@ -35,14 +35,18 @@ read or write stays in your context for good, so:
 
 On start:
 1. Session not named `<project>-orch` → tell the user to type `/rename <project>-orch`.
-2. `ListAgents`, reconcile with the board: which workers are live, which stopped.
+2. `orchctl alive`, reconcile with the board: per issue `working`, `blocked`, `stopped`
+   or `none`, with the live session ids. Not `ListAgents` — it hides blocked sessions.
+   Two ids on one issue = a duplicate: `orchctl reopen <issue> "<message>"` stops the
+   blocked ones (and resumes the newest unless one is working).
 3. `versioning: unset` above → ask the user (your own question): "Should workers bump
    this project's version as they go — patch for a fix, minor for a feature, over the
    last published release?" Yes / No → `orchctl versioning on` / `off`.
 
 A `orch: stalled workers …` note on a prompt: an API error ended that worker's turn
-mid-work and it sent nothing. `SendMessage` it "continue where you stopped" (the note
-goes once it runs again) and tell the user in one line.
+mid-work and it sent nothing; it sits `blocked`, out of `SendMessage`'s reach.
+`orchctl reopen <issue> "continue where you stopped"` (the note goes once it runs
+again; "still running" → `SendMessage` it instead) and tell the user in one line.
 4. Short status to the user: open questions first, then active issues.
 
 ## State — the `orchctl` CLI only
@@ -50,7 +54,7 @@ Change state only with `orchctl …` (one-line output) — never Edit, python or
 
 | when | command |
 |---|---|
-| status / outcome changes | `orchctl row <issue> <status> "<≤8-word outcome>"` — `active` `waiting-user` `paused` `idle` `done` `reopened` `dropped` (done/dropped also releases its claims) |
+| status / outcome changes | `orchctl row <issue> <status> "<≤8-word outcome>"` — `active` `waiting-user` `paused` `idle` `done` `reopened` `dropped` (done/dropped also releases its claims and closes the worker) |
 | worker sends Q | `orchctl q <issue> "<≤8-word gist>"` → `Q172` |
 | user answered | `orchctl a <Qn>` |
 | a CHECK all works, or the user says go on without it | `orchctl checked <issue>` |
@@ -72,9 +76,12 @@ Issue names: short kebab-case. Worker session = `<project>-<issue>`.
 - **One issue = one worker = one context.** A new bug or feature gets its own worker.
   Hand it to an existing one only on the user's explicit yes, sent as `user-confirmed:`.
 - Cross-worker knowledge: `FYI <issue>: see issues/<other>.md#<section>` — a pointer.
-- **Live worker** (in `ListAgents`): `SendMessage`.
-- **Stopped worker / reopen** (never one that's live):
-  `orchctl reopen <issue> "<message>"`, then `orchctl row <issue> reopened "<why>"`.
+- Which one: `orchctl alive <issue>`.
+- **`working`**: `SendMessage`.
+- **`blocked`** (an API error, or a prompt waiting for the user): stalled → reopen it;
+  otherwise ask the user to attach and answer it (`claude agents` → Enter).
+- **`stopped` / reopen**: `orchctl reopen <issue> "<message>"` (stops any blocked
+  session of it first; refuses a working one), then `orchctl row <issue> reopened "<why>"`.
 - A worker's pane got closed: `orchctl pane <issue>`.
 
 ## Messages
@@ -143,9 +150,9 @@ open). Never leave a finished worker running without asking.
 
 Close only on **the user's confirmation** ("close it" / Yes):
 1. Nothing pending: no open Qn, no commit-go unused, its READY committed (`orchctl full`).
-2. `orchctl row <issue> done "<≤8 words>"` (releases its claims).
-3. `orchctl close <issue>` — stops the session
-   and its pane; the transcript stays for a reopen. Never delete sessions.
+2. `orchctl row <issue> done "<≤8 words>"` — releases its claims and closes it: stops
+   every session of it, blocked ones too, and its pane; the transcript stays for a
+   reopen. Never delete sessions. `orchctl close <issue>` does the closing alone.
 
 ## If the user deep-dives
 Suggest attaching (`claude agents` → Enter; `←` back). What they decide there comes
